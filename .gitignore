@@ -1,0 +1,38 @@
+# Build output
+build/
+Build/
+out/
+cmake-build-*/
+_deps/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.sln
+*.vcxproj*
+CMakeSettings.json
+CMakeUserPresets.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# JUCE / plugin artefacts
+JuceLibraryCode/
+*.vst3/
+*.component/
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.obj
+*.lib
+*.exp
+*.o
+*.a
+*.so
+build-asan/
