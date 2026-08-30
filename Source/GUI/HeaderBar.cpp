@@ -58,44 +58,40 @@ void HeaderBar::paint (juce::Graphics& g)
     g.setColour (theme.accent.withAlpha (0.5f));
     g.fillRect (0.0f, b.getBottom() - 1.0f, b.getWidth(), 1.0f);
 
-    // --- wordmark -------------------------------------------------------------
-    // A simple triangular glyph as a placeholder mark - swap this path for
-    // your own logo. It exists mainly to prove the pattern: a small shape
-    // filled with an accent gradient plus a touch of bloom reads as a mark
-    // rather than a decoration, at almost no drawing cost.
+    // Two overlapping circles: left ear / right ear. Stroke-only so the
+    // vesica in the middle stays the background, which is what makes it
+    // read as a mark rather than a blob.
     {
-        auto mark = juce::Rectangle<float> (16.0f, b.getCentreY() - 11.0f, 22.0f, 22.0f);
+        const float cy = b.getCentreY();
+        auto left  = juce::Rectangle<float> (14.0f, cy - 10.0f, 20.0f, 20.0f);
+        auto right = left.translated (8.0f, 0.0f);
 
-        juce::Path glyph;
-        glyph.startNewSubPath (mark.getCentreX(), mark.getY());
-        glyph.lineTo (mark.getRight(), mark.getBottom());
-        glyph.lineTo (mark.getX(), mark.getBottom());
-        glyph.closeSubPath();
+        g.setColour (theme.accent.withAlpha (0.95f));
+        g.drawEllipse (left, 1.7f);
+        g.setColour (theme.accentAlt.withAlpha (0.95f));
+        g.drawEllipse (right, 1.7f);
 
-        g.setGradientFill (juce::ColourGradient (theme.accent, mark.getX(), mark.getBottom(),
-                                                 theme.accentAlt, mark.getRight(), mark.getY(), false));
-        g.fillPath (glyph);
-
-        PluginTemplateLookAndFeel::bloom (g, mark.getCentre(), 18.0f, theme.accent, 0.14f);
+        BinauralBeatsLookAndFeel::bloom (g, { left.getCentreX() + 4.0f, cy },
+                                         16.0f, theme.accent, 0.12f);
     }
 
     // --- title ----------------------------------------------------------------
     {
         auto titleArea = juce::Rectangle<float> (b.getWidth() * 0.5f - 220.0f, 8.0f, 440.0f, 30.0f);
 
-        g.setFont (PluginTemplateLookAndFeel::titleFont (20.0f, 0.30f));
+        g.setFont (BinauralBeatsLookAndFeel::titleFont (20.0f, 0.30f));
 
         g.setColour (juce::Colours::black.withAlpha (0.35f));
-        PluginTemplateLookAndFeel::drawCentredTracked (g, pluginTitle, titleArea.translated (0.0f, 1.4f));
+        BinauralBeatsLookAndFeel::drawCentredTracked (g, pluginTitle, titleArea.translated (0.0f, 1.4f));
 
         g.setColour (theme.text);
-        PluginTemplateLookAndFeel::drawCentredTracked (g, pluginTitle, titleArea);
+        BinauralBeatsLookAndFeel::drawCentredTracked (g, pluginTitle, titleArea);
 
         if (pluginTagline.isNotEmpty())
         {
             g.setColour (theme.textDim.withAlpha (0.88f));
-            g.setFont (PluginTemplateLookAndFeel::labelFont (9.5f, false, 0.14f));
-            PluginTemplateLookAndFeel::drawCentredTracked (g, pluginTagline,
+            g.setFont (BinauralBeatsLookAndFeel::labelFont (9.5f, false, 0.14f));
+            BinauralBeatsLookAndFeel::drawCentredTracked (g, pluginTagline,
                 juce::Rectangle<float> (b.getWidth() * 0.5f - 220.0f, 36.0f, 440.0f, 14.0f));
         }
     }

@@ -1,10 +1,10 @@
 @echo off
 REM ---------------------------------------------------------------------------
-REM  Builds PluginTemplate.vst3 (64-bit, Release) with Visual Studio 2022.
+REM  Builds BinauralBeats.vst3 (64-bit, Release) with Visual Studio 2022.
 REM  JUCE is downloaded automatically on the first configure.
 REM
 REM  TEMPLATE: after renaming the plugin (see scripts/rename_plugin.py), this
-REM  file's PluginTemplate references are updated for you automatically.
+REM  file's BinauralBeats references are updated for you automatically.
 REM ---------------------------------------------------------------------------
 setlocal
 
@@ -24,15 +24,15 @@ if errorlevel 1 goto :failed
 
 echo.
 echo === Building (Release) ===
-cmake --build build --config Release --target PluginTemplate_VST3
+cmake --build build --config Release --target BinauralBeats_VST3
 if errorlevel 1 goto :failed
 
 echo.
 echo Done.
-echo Plugin: build\PluginTemplate_artefacts\Release\VST3\PluginTemplate.vst3
+echo Plugin: build\BinauralBeats_artefacts\Release\VST3\BinauralBeats.vst3
 echo.
 echo It should already be installed to C:\Program Files\Common Files\VST3.
-echo If not, copy the PluginTemplate.vst3 folder there yourself, then rescan in your DAW.
+echo If not, copy the BinauralBeats.vst3 folder there yourself, then rescan in your DAW.
 echo.
 exit /b 0
 

@@ -11,12 +11,16 @@ namespace pt
     breaks every file written before the rename. Add new ones at the bottom. */
 namespace pid
 {
-    inline constexpr const char* input   = "input";
-    inline constexpr const char* drive   = "drive";
-    inline constexpr const char* tone    = "tone";
-    inline constexpr const char* mix     = "mix";
-    inline constexpr const char* output  = "output";
-    inline constexpr const char* bypass  = "bypass";
+    inline constexpr const char* leftFreq  = "leftFreq";
+    inline constexpr const char* rightFreq = "rightFreq";
+    inline constexpr const char* beatFreq  = "beatFreq";
+    inline constexpr const char* duration  = "duration";
+    inline constexpr const char* fadeIn    = "fadeIn";
+    inline constexpr const char* fadeOut   = "fadeOut";
+    inline constexpr const char* mode      = "mode";
+    inline constexpr const char* mix       = "mix";
+    inline constexpr const char* output    = "output";
+    inline constexpr const char* bypass    = "bypass";
 }
 
 //==============================================================================

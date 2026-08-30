@@ -10,7 +10,7 @@ cmake_policy(SET CMP0091 NEW)
 # scripts/rename_plugin.py, which does this (and everything else on this
 # page) for you.
 # ---------------------------------------------------------------------------
-project(PluginTemplate VERSION 0.1.0 LANGUAGES C CXX)
+project(BinauralBeats VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -67,15 +67,15 @@ set_target_properties(TemplateAssets PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 # BUNDLE_ID, PLUGIN_MANUFACTURER_CODE (4 chars, first must be uppercase),
 # PLUGIN_CODE (4 chars, must be unique per-plugin within your manufacturer),
 # PRODUCT_NAME and DESCRIPTION.
-juce_add_plugin(PluginTemplate
+juce_add_plugin(BinauralBeats
     COMPANY_NAME                "Your Company"
     COMPANY_WEBSITE             "https://example.com"
-    BUNDLE_ID                   "com.yourcompany.plugintemplate"
+    BUNDLE_ID                   "com.yourcompany.binauralbeats"
     PLUGIN_MANUFACTURER_CODE    Ycmp
-    PLUGIN_CODE                 Tmpl
+    PLUGIN_CODE                 BnBt
     FORMATS                     VST3 Standalone
-    PRODUCT_NAME                "PluginTemplate"
-    DESCRIPTION                 "A JUCE VST3 plugin"
+    PRODUCT_NAME                "BinauralBeats"
+    DESCRIPTION                 "Generate binaural beats and pure tones with duration, fades, and WAV export"
     IS_SYNTH                    FALSE
     NEEDS_MIDI_INPUT            FALSE
     NEEDS_MIDI_OUTPUT           FALSE
@@ -102,11 +102,11 @@ set(TEMPLATE_SOURCES
     Source/GUI/SavePresetPanel.cpp
     Source/GUI/PresetBrowser.cpp)
 
-target_sources(PluginTemplate PRIVATE ${TEMPLATE_SOURCES})
+target_sources(BinauralBeats PRIVATE ${TEMPLATE_SOURCES})
 
-target_include_directories(PluginTemplate PRIVATE Source)
+target_include_directories(BinauralBeats PRIVATE Source)
 
-target_compile_definitions(PluginTemplate PUBLIC
+target_compile_definitions(BinauralBeats PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
@@ -115,9 +115,10 @@ target_compile_definitions(PluginTemplate PUBLIC
     JUCE_STRICT_REFCOUNTEDPOINTER=1
     JUCE_MODAL_LOOPS_PERMITTED=0)
 
-target_link_libraries(PluginTemplate PRIVATE
+target_link_libraries(BinauralBeats PRIVATE
     TemplateAssets
     juce::juce_audio_utils
+    juce::juce_audio_formats
     juce::juce_audio_processors
     juce::juce_gui_basics
     PUBLIC
@@ -126,9 +127,9 @@ target_link_libraries(PluginTemplate PRIVATE
     juce::juce_recommended_warning_flags)
 
 if(MSVC)
-    target_compile_options(PluginTemplate PRIVATE $<$<CONFIG:Release>:/O2 /Oi /Ot>)
+    target_compile_options(BinauralBeats PRIVATE $<$<CONFIG:Release>:/O2 /Oi /Ot>)
 else()
-    target_compile_options(PluginTemplate PRIVATE $<$<CONFIG:Release>:-O3>)
+    target_compile_options(BinauralBeats PRIVATE $<$<CONFIG:Release>:-O3>)
 endif()
 
 # ---------------------------------------------------------------------------
@@ -151,6 +152,7 @@ if(TEMPLATE_BUILD_TESTS)
     target_link_libraries(TemplateDspTest PRIVATE
         TemplateAssets
         juce::juce_audio_utils
+        juce::juce_audio_formats
         juce::juce_audio_processors
         juce::juce_gui_basics
         PUBLIC
@@ -173,6 +175,7 @@ if(TEMPLATE_BUILD_TESTS)
     target_link_libraries(TemplateLifecycleTest PRIVATE
         TemplateAssets
         juce::juce_audio_utils
+        juce::juce_audio_formats
         juce::juce_audio_processors
         juce::juce_gui_basics
         PUBLIC

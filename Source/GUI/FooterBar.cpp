@@ -231,7 +231,7 @@ void FooterBar::paint (juce::Graphics& g)
     g.setColour (theme.accent.withAlpha (0.45f));
     g.fillRect (0.0f, 0.0f, b.getWidth(), 1.0f);
 
-    g.setFont (PluginTemplateLookAndFeel::labelFont (8.5f, true, 0.13f));
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (8.5f, true, 0.13f));
     g.setColour (theme.textDim.withAlpha (0.72f));
     g.drawText ("PRESET", 16, 8, 90, 12, juce::Justification::centredLeft);
     g.drawText ("ZOOM", getWidth() - 92, 8, 80, 12, juce::Justification::centredLeft);

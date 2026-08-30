@@ -15,12 +15,16 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     lookup into the APVTS. */
 struct ParamPtrs
 {
-    std::atomic<float>* input  = nullptr;
-    std::atomic<float>* drive  = nullptr;
-    std::atomic<float>* tone   = nullptr;
-    std::atomic<float>* mix    = nullptr;
-    std::atomic<float>* output = nullptr;
-    std::atomic<float>* bypass = nullptr;
+    std::atomic<float>* leftFreq  = nullptr;
+    std::atomic<float>* rightFreq = nullptr;
+    std::atomic<float>* beatFreq  = nullptr;
+    std::atomic<float>* duration  = nullptr;
+    std::atomic<float>* fadeIn    = nullptr;
+    std::atomic<float>* fadeOut   = nullptr;
+    std::atomic<float>* mode      = nullptr;
+    std::atomic<float>* mix       = nullptr;
+    std::atomic<float>* output    = nullptr;
+    std::atomic<float>* bypass    = nullptr;
 
     void bind (juce::AudioProcessorValueTreeState& apvts);
 };

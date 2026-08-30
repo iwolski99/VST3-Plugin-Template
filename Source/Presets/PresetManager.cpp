@@ -5,8 +5,8 @@ namespace pt
 
 // Both of these embed the plugin's name - update them together with the rest
 // of the rename (see scripts/rename_plugin.py).
-static constexpr const char* kPresetExtension = ".pluginpreset";
-static constexpr const char* kPresetFolderName = "PluginTemplate";
+static constexpr const char* kPresetExtension = ".binauralbeatspreset";
+static constexpr const char* kPresetFolderName = "BinauralBeats";
 
 PresetManager::PresetManager (juce::AudioProcessorValueTreeState& state)
     : apvts (state)

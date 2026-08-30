@@ -5,25 +5,25 @@ namespace
     juce::PropertiesFile::Options zoomStoreOptions()
     {
         juce::PropertiesFile::Options o;
-        o.applicationName = "PluginTemplate";
+        o.applicationName = "BinauralBeats";
         o.filenameSuffix = "settings";
-        o.folderName = "PluginTemplate";
+        o.folderName = "BinauralBeats";
         o.osxLibrarySubFolder = "Application Support";
         return o;
     }
 }
 
 //==============================================================================
-PluginTemplateAudioProcessorEditor::PluginTemplateAudioProcessorEditor (PluginTemplateAudioProcessor& p)
+BinauralBeatsAudioProcessorEditor::BinauralBeatsAudioProcessorEditor (BinauralBeatsAudioProcessor& p)
     : AudioProcessorEditor (&p),
-      processor (p),
-      mainPanel (p.getAPVTS()),
+      plugin (p),
+      mainPanel (p),
       header (p.getAPVTS(), pt::pid::bypass),
       footer (p.getAPVTS(), p.getPresetManager()),
       presetBrowser (p.getPresetManager())
 {
     setLookAndFeel (&lookAndFeel);
-    header.setTitle ("PluginTemplate", "one-line description of what it does");
+    header.setTitle ("BinauralBeats", "pure tones  ·  binaural beats  ·  export");
 
     addAndMakeVisible (content);
     content.addAndMakeVisible (mainPanel);
@@ -37,7 +37,7 @@ PluginTemplateAudioProcessorEditor::PluginTemplateAudioProcessorEditor (PluginTe
 
     savePanel.onSave = [this] (const juce::String& name, const juce::String& category)
     {
-        processor.getPresetManager().saveUser (name, category);
+        plugin.getPresetManager().saveUser (name, category);
         footer.refreshPresetList();
     };
 
@@ -45,7 +45,7 @@ PluginTemplateAudioProcessorEditor::PluginTemplateAudioProcessorEditor (PluginTe
 
     footer.onRequestSave = [this]
     {
-        savePanel.show (processor.getPresetManager().getCurrentName());
+        savePanel.show (plugin.getPresetManager().getCurrentName());
     };
 
     footer.onBrowsePresets = [this] { presetBrowser.show(); };
@@ -58,13 +58,13 @@ PluginTemplateAudioProcessorEditor::PluginTemplateAudioProcessorEditor (PluginTe
     setZoomPercent (clampZoomToDisplay (loadStoredZoom()), false);
 }
 
-PluginTemplateAudioProcessorEditor::~PluginTemplateAudioProcessorEditor()
+BinauralBeatsAudioProcessorEditor::~BinauralBeatsAudioProcessorEditor()
 {
     setLookAndFeel (nullptr);
 }
 
 //==============================================================================
-void PluginTemplateAudioProcessorEditor::applyTheme (const pt::Theme& t)
+void BinauralBeatsAudioProcessorEditor::applyTheme (const pt::Theme& t)
 {
     lookAndFeel.setTheme (t);
     mainPanel.setTheme (t);
@@ -75,7 +75,7 @@ void PluginTemplateAudioProcessorEditor::applyTheme (const pt::Theme& t)
 }
 
 //==============================================================================
-int PluginTemplateAudioProcessorEditor::loadStoredZoom() const
+int BinauralBeatsAudioProcessorEditor::loadStoredZoom() const
 {
     juce::ApplicationProperties props;
     props.setStorageParameters (zoomStoreOptions());
@@ -86,7 +86,7 @@ int PluginTemplateAudioProcessorEditor::loadStoredZoom() const
     return 100;
 }
 
-void PluginTemplateAudioProcessorEditor::storeZoom (int percent) const
+void BinauralBeatsAudioProcessorEditor::storeZoom (int percent) const
 {
     juce::ApplicationProperties props;
     props.setStorageParameters (zoomStoreOptions());
@@ -98,7 +98,7 @@ void PluginTemplateAudioProcessorEditor::storeZoom (int percent) const
     }
 }
 
-int PluginTemplateAudioProcessorEditor::clampZoomToDisplay (int percent) const
+int BinauralBeatsAudioProcessorEditor::clampZoomToDisplay (int percent) const
 {
     const auto& options = pt::FooterBar::zoomOptions();
     int idx = options.indexOf (percent);
@@ -107,7 +107,7 @@ int PluginTemplateAudioProcessorEditor::clampZoomToDisplay (int percent) const
 
     if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
     {
-        const auto area = display->userArea;
+        const auto area = display->userBounds.toNearestInt();
 
         while (idx > 0)
         {
@@ -125,7 +125,7 @@ int PluginTemplateAudioProcessorEditor::clampZoomToDisplay (int percent) const
     return options[juce::jmax (0, idx)];
 }
 
-void PluginTemplateAudioProcessorEditor::setZoomPercent (int percent, bool store)
+void BinauralBeatsAudioProcessorEditor::setZoomPercent (int percent, bool store)
 {
     zoomPercent = percent;
     const float scale = (float) zoomPercent / 100.0f;
@@ -144,7 +144,7 @@ void PluginTemplateAudioProcessorEditor::setZoomPercent (int percent, bool store
 }
 
 //==============================================================================
-void PluginTemplateAudioProcessorEditor::resized()
+void BinauralBeatsAudioProcessorEditor::resized()
 {
     auto b = content.getLocalBounds();
 
@@ -156,7 +156,7 @@ void PluginTemplateAudioProcessorEditor::resized()
     presetBrowser.setBounds (content.getLocalBounds());
 }
 
-void PluginTemplateAudioProcessorEditor::paint (juce::Graphics& g)
+void BinauralBeatsAudioProcessorEditor::paint (juce::Graphics& g)
 {
     const auto& t = lookAndFeel.getCurrentTheme();
 

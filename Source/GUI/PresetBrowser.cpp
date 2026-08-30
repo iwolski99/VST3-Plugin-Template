@@ -246,7 +246,7 @@ void PresetBrowser::paint (juce::Graphics& g)
 
     auto card = cardBounds().toFloat();
 
-    PluginTemplateLookAndFeel::dropShadow (g, card, ui::panelCorner, 10.0f, 0.55f);
+    BinauralBeatsLookAndFeel::dropShadow (g, card, ui::panelCorner, 10.0f, 0.55f);
 
     g.setColour (juce::Colour (0xff0c0e14).withAlpha (0.97f));
     g.fillRoundedRectangle (card, ui::panelCorner);
@@ -255,12 +255,12 @@ void PresetBrowser::paint (juce::Graphics& g)
     g.drawRoundedRectangle (card.reduced (0.5f), ui::panelCorner, 1.0f);
 
     // --- header -----------------------------------------------------------
-    g.setFont (PluginTemplateLookAndFeel::titleFont (15.0f, 0.22f));
+    g.setFont (BinauralBeatsLookAndFeel::titleFont (15.0f, 0.22f));
     g.setColour (theme.text);
     g.drawText ("PRESETS", (int) card.getX() + 18, (int) card.getY() + 8, 220, 26,
                 juce::Justification::centredLeft);
 
-    g.setFont (PluginTemplateLookAndFeel::labelFont (9.5f, false, 0.06f));
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (9.5f, false, 0.06f));
     g.setColour (theme.textDim.withAlpha (0.75f));
     g.drawText (juce::String ((int) visible.size()) + " presets  \xc2\xb7  click to load",
                 (int) card.getX() + 116, (int) card.getY() + 8, 300, 26,
@@ -287,7 +287,7 @@ void PresetBrowser::paint (juce::Graphics& g)
                                     2.5f, (float) row.getHeight() - 6.0f, 1.2f);
         }
 
-        g.setFont (PluginTemplateLookAndFeel::labelFont (10.5f, i == selectedCategory, 0.05f));
+        g.setFont (BinauralBeatsLookAndFeel::labelFont (10.5f, i == selectedCategory, 0.05f));
         g.setColour (i == selectedCategory ? theme.text : theme.textDim.withAlpha (0.8f));
         g.drawText (categories[i], row.reduced (11, 0), juce::Justification::centredLeft);
     }
@@ -316,8 +316,8 @@ void PresetBrowser::paint (juce::Graphics& g)
 
         if (isLoaded)
         {
-            PluginTemplateLookAndFeel::drawActivePill (g, t.toFloat(), ui::controlCorner, theme.accent, 1.0f);
-            g.setColour (PluginTemplateLookAndFeel::pillTextColour (theme.accent));
+            BinauralBeatsLookAndFeel::drawActivePill (g, t.toFloat(), ui::controlCorner, theme.accent, 1.0f);
+            g.setColour (BinauralBeatsLookAndFeel::pillTextColour (theme.accent));
         }
         else
         {
@@ -331,7 +331,7 @@ void PresetBrowser::paint (juce::Graphics& g)
             g.setColour (isHover ? theme.text : theme.text.withAlpha (0.86f));
         }
 
-        g.setFont (PluginTemplateLookAndFeel::labelFont (10.5f, isLoaded, 0.02f));
+        g.setFont (BinauralBeatsLookAndFeel::labelFont (10.5f, isLoaded, 0.02f));
         g.drawText (entry.name, t.reduced (9, 0), juce::Justification::centredLeft, true);
 
         // A dot marks a user preset, so the two banks are distinguishable
@@ -345,13 +345,13 @@ void PresetBrowser::paint (juce::Graphics& g)
 
     if (visible.empty())
     {
-        g.setFont (PluginTemplateLookAndFeel::labelFont (11.0f, false, 0.05f));
+        g.setFont (BinauralBeatsLookAndFeel::labelFont (11.0f, false, 0.05f));
         g.setColour (theme.textDim.withAlpha (0.7f));
         g.drawText ("Nothing saved in this folder yet", grid, juce::Justification::centred);
     }
 
     // --- footer --------------------------------------------------------------
-    g.setFont (PluginTemplateLookAndFeel::labelFont (9.0f, false, 0.05f));
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (9.0f, false, 0.05f));
     g.setColour (theme.textDim.withAlpha (0.6f));
     g.drawText ("Esc or click outside to close", (int) card.getX() + 18,
                 (int) card.getBottom() - kFooterH + 8, 420, 20,

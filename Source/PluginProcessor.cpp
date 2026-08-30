@@ -2,7 +2,7 @@
 #include "PluginEditor.h"
 
 //==============================================================================
-PluginTemplateAudioProcessor::PluginTemplateAudioProcessor()
+BinauralBeatsAudioProcessor::BinauralBeatsAudioProcessor()
     : AudioProcessor (BusesProperties()
                            .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                            .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
@@ -12,10 +12,10 @@ PluginTemplateAudioProcessor::PluginTemplateAudioProcessor()
     params.bind (apvts);
 }
 
-PluginTemplateAudioProcessor::~PluginTemplateAudioProcessor() = default;
+BinauralBeatsAudioProcessor::~BinauralBeatsAudioProcessor() = default;
 
 //==============================================================================
-bool PluginTemplateAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool BinauralBeatsAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     const auto mono = juce::AudioChannelSet::mono();
     const auto stereo = juce::AudioChannelSet::stereo();
@@ -28,95 +28,180 @@ bool PluginTemplateAudioProcessor::isBusesLayoutSupported (const BusesLayout& la
     return in == mono || in == stereo;
 }
 
-void PluginTemplateAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+pt::RenderSpec BinauralBeatsAudioProcessor::currentSpec() const
+{
+    pt::RenderSpec spec;
+    spec.sampleRate  = currentSampleRate;
+    spec.leftHz      = params.leftFreq->load();
+    spec.rightHz     = params.rightFreq->load();
+    spec.durationSec = params.duration->load();
+    spec.fadeInSec   = params.fadeIn->load();
+    spec.fadeOutSec  = params.fadeOut->load();
+    spec.mode        = (pt::OutputMode) juce::roundToInt (params.mode->load());
+    spec.gain        = 0.35f;
+    return spec;
+}
+
+void BinauralBeatsAudioProcessor::startPlayback()
+{
+    retrigger.store (true, std::memory_order_release);
+    playing.store (true, std::memory_order_release);
+}
+
+void BinauralBeatsAudioProcessor::stopPlayback()
+{
+    playing.store (false, std::memory_order_release);
+}
+
+void BinauralBeatsAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
-
-    for (auto& e : effect)
-        e.prepare (sampleRate);
+    renderer.prepare (sampleRate);
 
     constexpr double smoothingSeconds = 0.02;
-    smoothedInput.reset (sampleRate, smoothingSeconds);
     smoothedOutput.reset (sampleRate, smoothingSeconds);
     smoothedMix.reset (sampleRate, smoothingSeconds);
     smoothedBypass.reset (sampleRate, smoothingSeconds);
 
-    smoothedInput.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (params.input->load()));
     smoothedOutput.setCurrentAndTargetValue (juce::Decibels::decibelsToGain (params.output->load()));
     smoothedMix.setCurrentAndTargetValue (params.mix->load() * 0.01f);
     smoothedBypass.setCurrentAndTargetValue (params.bypass->load() > 0.5f ? 1.0f : 0.0f);
 
-    // 4 rows: input gain, output gain, mix, bypass - one ramp each, computed
-    // once per block and shared by every channel.
-    rampBuffer.setSize (4, juce::jmax (1, samplesPerBlock));
+    const int n = juce::jmax (1, samplesPerBlock);
+    rampBuffer.setSize (3, n);   // output, mix, bypass
+    genBuffer.setSize (2, n);
 }
 
-void PluginTemplateAudioProcessor::releaseResources() {}
+void BinauralBeatsAudioProcessor::releaseResources() {}
 
-void PluginTemplateAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void BinauralBeatsAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
 {
     juce::ScopedNoDenormals noDenormals;
 
     const int numChannels = buffer.getNumChannels();
     const int numSamples  = buffer.getNumSamples();
 
-    smoothedInput.setTargetValue (juce::Decibels::decibelsToGain (params.input->load()));
+    for (int ch = numChannels; ch < getTotalNumOutputChannels(); ++ch)
+        buffer.clear (ch, 0, numSamples);
+
     smoothedOutput.setTargetValue (juce::Decibels::decibelsToGain (params.output->load()));
     smoothedMix.setTargetValue (params.mix->load() * 0.01f);
     smoothedBypass.setTargetValue (params.bypass->load() > 0.5f ? 1.0f : 0.0f);
 
-    // Read once per block: fine for controls that shape a static curve
-    // (drive amount, tone tilt) rather than a level that would otherwise
-    // zipper audibly.
-    const float drive01 = params.drive->load() * 0.01f;
-    const float tone    = params.tone->load() * 0.01f;   // -1..1
-
-    // Compute each ramp's per-sample trajectory once, so every channel reads
-    // the identical sequence of values instead of a stereo pair's channels
-    // drifting apart or the smoothing having to be advanced N times per
-    // sample for N channels.
     if (rampBuffer.getNumSamples() < numSamples)
-        rampBuffer.setSize (4, numSamples, false, false, true);
+        rampBuffer.setSize (3, numSamples, false, false, true);
 
-    auto* inputRow   = rampBuffer.getWritePointer (0);
-    auto* outputRow  = rampBuffer.getWritePointer (1);
-    auto* mixRow     = rampBuffer.getWritePointer (2);
-    auto* bypassRow  = rampBuffer.getWritePointer (3);
+    if (genBuffer.getNumSamples() < numSamples || genBuffer.getNumChannels() < 2)
+        genBuffer.setSize (2, numSamples, false, false, true);
+
+    auto* outputRow = rampBuffer.getWritePointer (0);
+    auto* mixRow    = rampBuffer.getWritePointer (1);
+    auto* bypassRow = rampBuffer.getWritePointer (2);
 
     for (int i = 0; i < numSamples; ++i)
     {
-        inputRow[i]  = smoothedInput.getNextValue();
         outputRow[i] = smoothedOutput.getNextValue();
         mixRow[i]    = smoothedMix.getNextValue();
         bypassRow[i] = smoothedBypass.getNextValue();
     }
 
-    for (int ch = 0; ch < numChannels; ++ch)
+    if (retrigger.exchange (false, std::memory_order_acq_rel))
     {
-        auto* data = buffer.getWritePointer (ch);
-        auto& eff  = effect[(size_t) juce::jmin (ch, 1)];
+        renderer.prepare (currentSampleRate);
+        renderer.reset();
+        playing.store (true, std::memory_order_relaxed);
+    }
+
+    auto spec = currentSpec();
+    spec.sampleRate = currentSampleRate;
+    renderer.setSpec (spec);
+
+    auto* genL = genBuffer.getWritePointer (0);
+    auto* genR = genBuffer.getWritePointer (1);
+    const bool active = playing.load (std::memory_order_relaxed);
+
+    if (active)
+    {
+        bool stillGoing = true;
 
         for (int i = 0; i < numSamples; ++i)
         {
-            const float dry = data[i];
-            const float in  = dry * inputRow[i];
-            const float wet = eff.process (in, drive01, tone);
-            const float mixed = juce::jmap (mixRow[i], dry, wet);
-            const float out = mixed * outputRow[i];
-
-            data[i] = juce::jmap (bypassRow[i], out, dry);
+            stillGoing = renderer.processSample (genL[i], genR[i]);
+            if (! stillGoing)
+            {
+                for (int j = i + 1; j < numSamples; ++j)
+                    genL[j] = genR[j] = 0.0f;
+                break;
+            }
         }
+
+        playbackSeconds.store (renderer.getTimeSeconds(), std::memory_order_relaxed);
+
+        if (! stillGoing)
+            playing.store (false, std::memory_order_relaxed);
+    }
+    else
+    {
+        genBuffer.clear();
+    }
+
+    float* outL = buffer.getWritePointer (0);
+    float* outR = numChannels > 1 ? buffer.getWritePointer (1) : nullptr;
+
+    for (int i = 0; i < numSamples; ++i)
+    {
+        const float dryL = outL[i];
+        const float dryR = outR != nullptr ? outR[i] : dryL;
+        float wetL = genL[i];
+        float wetR = genR[i];
+
+        if (outR == nullptr)
+            wetL = wetR = 0.5f * (wetL + wetR);
+
+        const float mixedL = juce::jmap (mixRow[i], dryL, wetL) * outputRow[i];
+        const float mixedR = juce::jmap (mixRow[i], dryR, wetR) * outputRow[i];
+
+        outL[i] = juce::jmap (bypassRow[i], mixedL, dryL);
+        if (outR != nullptr)
+            outR[i] = juce::jmap (bypassRow[i], mixedR, dryR);
     }
 }
 
 //==============================================================================
-void PluginTemplateAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+juce::File BinauralBeatsAudioProcessor::renderTempWav (pt::ExportKind kind, juce::String& error)
+{
+    auto spec = currentSpec();
+    spec.sampleRate = 44100.0;
+
+    auto dir = juce::File::getSpecialLocation (juce::File::tempDirectory)
+                   .getChildFile ("BinauralBeats");
+    dir.createDirectory();
+
+    auto file = dir.getChildFile (pt::makeExportFileName (spec, kind));
+
+    if (! renderWavToFile (file, kind, error))
+        return {};
+
+    return file;
+}
+
+bool BinauralBeatsAudioProcessor::renderWavToFile (const juce::File& dest,
+                                                   pt::ExportKind kind,
+                                                   juce::String& error)
+{
+    auto spec = currentSpec();
+    spec.sampleRate = 44100.0;
+    return pt::renderToWav (dest, spec, kind, error);
+}
+
+//==============================================================================
+void BinauralBeatsAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     if (auto xml = apvts.copyState().createXml())
         copyXmlToBinary (*xml, destData);
 }
 
-void PluginTemplateAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void BinauralBeatsAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
@@ -124,13 +209,13 @@ void PluginTemplateAudioProcessor::setStateInformation (const void* data, int si
 }
 
 //==============================================================================
-juce::AudioProcessorEditor* PluginTemplateAudioProcessor::createEditor()
+juce::AudioProcessorEditor* BinauralBeatsAudioProcessor::createEditor()
 {
-    return new PluginTemplateAudioProcessorEditor (*this);
+    return new BinauralBeatsAudioProcessorEditor (*this);
 }
 
 //==============================================================================
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new PluginTemplateAudioProcessor();
+    return new BinauralBeatsAudioProcessor();
 }
