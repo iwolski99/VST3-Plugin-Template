@@ -90,7 +90,7 @@ void Knob::paint (juce::Graphics& g)
     const bool live = hot || slider.isMouseOverOrDragging();
 
     // --- name ---------------------------------------------------------------
-    g.setFont (PluginTemplateLookAndFeel::labelFont (juce::jmax (8.5f, 10.0f * scale), true, 0.085f));
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (juce::jmax (8.5f, 10.0f * scale), true, 0.085f));
     g.setColour ((live ? dimCol.brighter (0.45f) : dimCol.withAlpha (0.82f))
                      .withMultipliedAlpha (enabledAlpha));
     g.drawFittedText (name.toUpperCase(), b.removeFromTop (nameH),
@@ -100,7 +100,7 @@ void Knob::paint (juce::Graphics& g)
     // Slightly larger and lit under the pointer; quiet the rest of the time.
     auto valueArea = b.removeFromBottom (valueH);
 
-    g.setFont (PluginTemplateLookAndFeel::labelFont (juce::jmax (9.0f, (live ? 11.9f : 11.0f) * scale),
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (juce::jmax (9.0f, (live ? 11.9f : 11.0f) * scale),
                                                      live, 0.010f));
 
     // Recessed well behind the digits, sized to the text rather than the full
@@ -185,7 +185,7 @@ void Combo::resized()
 
 void Combo::paint (juce::Graphics& g)
 {
-    g.setFont (PluginTemplateLookAndFeel::labelFont (10.0f, true, 0.085f));
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (10.0f, true, 0.085f));
     g.setColour (dimCol.withAlpha (box.isEnabled() ? 0.82f : 0.4f));
     g.drawFittedText (name.toUpperCase(), getLocalBounds().removeFromTop (14),
                       juce::Justification::centred, 1);
@@ -305,20 +305,224 @@ void ModeSwitch::paint (juce::Graphics& g)
     const auto activeSeg = full.withWidth (segW).withX (full.getX() + segW * (float) selected)
                                .reduced (2.0f);
 
-    PluginTemplateLookAndFeel::drawActivePill (g, activeSeg, juce::jmax (1.0f, r - 2.0f),
+    BinauralBeatsLookAndFeel::drawActivePill (g, activeSeg, juce::jmax (1.0f, r - 2.0f),
                                                theme.accent, hovered == selected ? 1.0f : 0.94f);
 
-    g.setFont (PluginTemplateLookAndFeel::labelFont (n > 2 ? 8.5f : 9.6f, true, 0.075f));
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (n > 2 ? 8.5f : 9.6f, true, 0.075f));
 
     for (int i = 0; i < n; ++i)
     {
         const auto area = full.withWidth (segW).withX (full.getX() + segW * (float) i);
 
-        g.setColour (i == selected ? PluginTemplateLookAndFeel::pillTextColour (theme.accent)
+        g.setColour (i == selected ? BinauralBeatsLookAndFeel::pillTextColour (theme.accent)
                                    : theme.textDim.withAlpha (hovered == i ? 0.95f : 0.62f));
 
         g.drawText (labels[i].toUpperCase(), area, juce::Justification::centred);
     }
+}
+
+//==============================================================================
+ValueField::ValueField (juce::AudioProcessorValueTreeState& state,
+                        const juce::String& parameterID,
+                        const juce::String& displayName,
+                        juce::String suffixText,
+                        int decimalPlaces)
+    : name (displayName), suffix (std::move (suffixText)), decimals (decimalPlaces)
+{
+    param = state.getParameter (parameterID);
+    jassert (param != nullptr);
+
+    editor.setJustification (juce::Justification::centred);
+    editor.setIndents (2, 0);
+    editor.setBorder (juce::BorderSize<int> (0));
+    editor.setPopupMenuEnabled (false);
+    editor.setInputRestrictions (16, "0123456789.:-");
+    editor.setColour (juce::TextEditor::backgroundColourId, juce::Colours::transparentBlack);
+    editor.setColour (juce::TextEditor::outlineColourId,     juce::Colours::transparentBlack);
+    editor.setColour (juce::TextEditor::focusedOutlineColourId, juce::Colours::transparentBlack);
+    editor.setColour (juce::TextEditor::highlightColourId, theme.accent.withAlpha (0.35f));
+    editor.setSelectAllWhenFocused (true);
+    editor.setFont (BinauralBeatsLookAndFeel::labelFont (13.0f, true, 0.01f));
+    editor.addListener (this);
+    addAndMakeVisible (editor);
+
+    if (param != nullptr)
+    {
+        attachment = std::make_unique<juce::ParameterAttachment> (
+            *param,
+            [this] (float v)
+            {
+                if (! editor.hasKeyboardFocus (true) && ! dragging)
+                    refreshText (v);
+            },
+            state.undoManager);
+        attachment->sendInitialUpdate();
+    }
+}
+
+ValueField::~ValueField()
+{
+    editor.removeListener (this);
+}
+
+void ValueField::setThemeColours (const Theme& t)
+{
+    theme = t;
+    editor.setColour (juce::TextEditor::textColourId, t.text);
+    editor.setColour (juce::TextEditor::highlightedTextColourId, t.text);
+    editor.setColour (juce::TextEditor::highlightColourId, t.accent.withAlpha (0.35f));
+    editor.applyFontToAllText (BinauralBeatsLookAndFeel::labelFont (13.0f, true, 0.01f));
+    repaint();
+}
+
+void ValueField::setCaption (const juce::String& text)
+{
+    const bool layoutChanged = caption.isEmpty() != text.isEmpty();
+    caption = text;
+    if (layoutChanged)
+        resized();
+    repaint();
+}
+
+void ValueField::resized()
+{
+    auto b = getLocalBounds();
+    b.removeFromTop (16);
+    if (caption.isNotEmpty())
+        b.removeFromBottom (14);
+    editor.setBounds (b.reduced (6, 4));
+}
+
+void ValueField::paint (juce::Graphics& g)
+{
+    auto b = getLocalBounds();
+
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (10.0f, true, 0.085f));
+    g.setColour (theme.textDim.withAlpha (isEnabled() ? 0.82f : 0.4f));
+    g.drawFittedText (name.toUpperCase(), b.removeFromTop (14),
+                      juce::Justification::centred, 1);
+
+    if (caption.isNotEmpty())
+    {
+        auto cap = b.removeFromBottom (14);
+        g.setFont (BinauralBeatsLookAndFeel::labelFont (9.0f, false, 0.04f));
+        g.setColour (theme.accent.withAlpha (0.85f));
+        g.drawFittedText (caption, cap, juce::Justification::centred, 1);
+    }
+
+    auto well = b.toFloat().reduced (2.0f);
+    const float r = ui::controlCorner;
+    const float dim = isEnabled() ? 1.0f : 0.45f;
+    const bool focused = editor.hasKeyboardFocus (true);
+
+    juce::ColourGradient trough (theme.bgBottom.darker (0.30f).withAlpha (0.88f * dim),
+                                 well.getCentreX(), well.getY(),
+                                 theme.bgBottom.brighter (0.05f).withAlpha (0.78f * dim),
+                                 well.getCentreX(), well.getBottom(), false);
+    g.setGradientFill (trough);
+    g.fillRoundedRectangle (well, r);
+
+    g.setColour ((focused ? theme.accent : theme.panelEdge.withAlpha (0.8f))
+                     .withMultipliedAlpha (dim));
+    g.drawRoundedRectangle (well, r, 1.0f);
+
+    g.setColour (juce::Colours::white.withAlpha (0.07f * dim));
+    g.drawLine (well.getX() + r, well.getY() + 1.0f,
+                well.getRight() - r, well.getY() + 1.0f, 1.0f);
+}
+
+void ValueField::refreshText (float denormalised)
+{
+    auto text = juce::String (denormalised, decimals);
+    if (suffix.isNotEmpty() && ! editor.hasKeyboardFocus (true))
+        text += " " + suffix;
+    editor.setText (text, juce::dontSendNotification);
+}
+
+float ValueField::parseTypedValue (const juce::String& text) const
+{
+    auto trimmed = text.trim();
+    if (suffix.isNotEmpty() && trimmed.endsWithIgnoreCase (suffix))
+        trimmed = trimmed.dropLastCharacters (suffix.length()).trim();
+
+    // Duration fields accept mm:ss as well as a raw second count.
+    if (trimmed.containsChar (':'))
+    {
+        const auto minutes = trimmed.upToFirstOccurrenceOf (":", false, false).getFloatValue();
+        const auto seconds = trimmed.fromFirstOccurrenceOf (":", false, false).getFloatValue();
+        return minutes * 60.0f + seconds;
+    }
+
+    return trimmed.getFloatValue();
+}
+
+float ValueField::nudgeAmount() const
+{
+    if (decimals >= 2) return 0.01f;
+    if (name.containsIgnoreCase ("fade") || name.containsIgnoreCase ("duration"))
+        return 0.5f;
+    return 1.0f;
+}
+
+void ValueField::commitEditor()
+{
+    if (attachment == nullptr || param == nullptr)
+        return;
+
+    const float typed = parseTypedValue (editor.getText());
+    const float clamped = param->convertFrom0to1 (
+        param->convertTo0to1 (typed));
+    attachment->setValueAsCompleteGesture (clamped);
+    refreshText (clamped);
+}
+
+void ValueField::textEditorReturnKeyPressed (juce::TextEditor&)
+{
+    commitEditor();
+    editor.giveAwayKeyboardFocus();
+}
+
+void ValueField::textEditorFocusLost (juce::TextEditor&)
+{
+    commitEditor();
+}
+
+void ValueField::textEditorEscapeKeyPressed (juce::TextEditor&)
+{
+    if (param != nullptr)
+        refreshText (param->convertFrom0to1 (param->getValue()));
+    editor.giveAwayKeyboardFocus();
+}
+
+void ValueField::mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel)
+{
+    if (attachment == nullptr || param == nullptr || ! isEnabled())
+        return;
+
+    const float delta = (wheel.deltaY > 0.0f ? 1.0f : -1.0f) * nudgeAmount()
+                        * (wheel.isReversed ? -1.0f : 1.0f);
+    const float current = param->convertFrom0to1 (param->getValue());
+    attachment->setValueAsCompleteGesture (current + delta);
+}
+
+void ValueField::mouseDrag (const juce::MouseEvent& e)
+{
+    if (attachment == nullptr || param == nullptr || ! isEnabled())
+        return;
+
+    if (! dragging)
+    {
+        dragging = true;
+        dragStartValue = param->convertFrom0to1 (param->getValue());
+    }
+
+    const float current = dragStartValue - (float) e.getDistanceFromDragStartY() * nudgeAmount() * 0.15f;
+    attachment->setValueAsCompleteGesture (current);
+}
+
+void ValueField::mouseUp (const juce::MouseEvent&)
+{
+    dragging = false;
 }
 
 } // namespace pt

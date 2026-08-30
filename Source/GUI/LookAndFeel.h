@@ -24,13 +24,13 @@ namespace ui
     scratch - that's what keeps forty controls looking like one instrument
     instead of forty separate widgets.
 
-    PluginTemplateLookAndFeel is the one identifier in this file worth
+    BinauralBeatsLookAndFeel is the one identifier in this file worth
     renaming to match your plugin (see scripts/rename_plugin.py) - everything
     it does is generic. */
-class PluginTemplateLookAndFeel : public juce::LookAndFeel_V4
+class BinauralBeatsLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    PluginTemplateLookAndFeel();
+    BinauralBeatsLookAndFeel();
 
     void setTheme (const Theme& t);
     const Theme& getCurrentTheme() const noexcept { return theme; }

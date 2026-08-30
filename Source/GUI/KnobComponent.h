@@ -135,4 +135,52 @@ private:
     Theme theme { getTheme() };
 };
 
+//==============================================================================
+/** Labelled numeric field bound to a float parameter. Type a value, scroll
+    the wheel, or drag the digits - built for frequencies and durations where
+    a knob is the wrong resolution. */
+class ValueField : public juce::Component,
+                   public juce::SettableTooltipClient,
+                   private juce::TextEditor::Listener
+{
+public:
+    ValueField (juce::AudioProcessorValueTreeState& state,
+                const juce::String& parameterID,
+                const juce::String& displayName,
+                juce::String suffix = {},
+                int decimalPlaces = 1);
+
+    ~ValueField() override;
+
+    void setThemeColours (const Theme& t);
+    void setCaption (const juce::String& text);   // optional line under the box
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
+    void mouseDrag (const juce::MouseEvent&) override;
+    void mouseUp (const juce::MouseEvent&) override;
+
+    juce::TextEditor& getEditor() noexcept { return editor; }
+
+private:
+    void textEditorReturnKeyPressed (juce::TextEditor&) override;
+    void textEditorFocusLost (juce::TextEditor&) override;
+    void textEditorEscapeKeyPressed (juce::TextEditor&) override;
+
+    void commitEditor();
+    void refreshText (float denormalised);
+    float parseTypedValue (const juce::String& text) const;
+    float nudgeAmount() const;
+
+    juce::RangedAudioParameter* param = nullptr;
+    std::unique_ptr<juce::ParameterAttachment> attachment;
+    juce::TextEditor editor;
+    juce::String name, suffix, caption;
+    int decimals = 1;
+    Theme theme { getTheme() };
+    bool dragging = false;
+    float dragStartValue = 0.0f;
+};
+
 } // namespace pt

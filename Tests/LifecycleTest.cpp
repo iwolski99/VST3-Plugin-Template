@@ -14,7 +14,7 @@ namespace
 {
     void runOnce (bool openEditorFirst)
     {
-        auto proc = std::make_unique<PluginTemplateAudioProcessor>();
+        auto proc = std::make_unique<BinauralBeatsAudioProcessor>();
         proc->prepareToPlay (48000.0, 512);
 
         juce::AudioBuffer<float> buffer (2, 512);
@@ -24,7 +24,7 @@ namespace
         if (openEditorFirst)
         {
             std::unique_ptr<juce::AudioProcessorEditor> editor (proc->createEditor());
-            editor->setSize (640, 420);
+            editor->setSize (720, 560);
             proc->processBlock (buffer, midi);
             editor.reset();               // editor torn down before the processor
             proc->processBlock (buffer, midi);
@@ -33,7 +33,7 @@ namespace
         {
             proc->processBlock (buffer, midi);
             std::unique_ptr<juce::AudioProcessorEditor> editor (proc->createEditor());
-            editor->setSize (640, 420);
+            editor->setSize (720, 560);
             proc->processBlock (buffer, midi);
             // editor and processor torn down together, editor first (RAII order)
         }

@@ -2,15 +2,16 @@
 
 #include "Common.h"
 #include "Params/ParameterLayout.h"
-#include "DSP/ExampleEffect.h"
+#include "DSP/ToneRenderer.h"
+#include "DSP/WavExporter.h"
 #include "Presets/PresetManager.h"
 
 //==============================================================================
-class PluginTemplateAudioProcessor : public juce::AudioProcessor
+class BinauralBeatsAudioProcessor : public juce::AudioProcessor
 {
 public:
-    PluginTemplateAudioProcessor();
-    ~PluginTemplateAudioProcessor() override;
+    BinauralBeatsAudioProcessor();
+    ~BinauralBeatsAudioProcessor() override;
 
     //== AudioProcessor ========================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -22,7 +23,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "PluginTemplate"; }
+    const juce::String getName() const override { return "BinauralBeats"; }
     bool acceptsMidi() const override  { return false; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -37,28 +38,37 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
-    //== Template-specific ======================================================
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
     pt::PresetManager& getPresetManager() noexcept { return presets; }
+
+    //== Playback ==============================================================
+    void startPlayback();
+    void stopPlayback();
+    bool isPlaying() const noexcept { return playing.load (std::memory_order_relaxed); }
+    double getPlaybackSeconds() const noexcept { return playbackSeconds.load (std::memory_order_relaxed); }
+
+    /** Snapshot of the current knobs, safe to call from the message thread. */
+    pt::RenderSpec currentSpec() const;
+
+    juce::File renderTempWav (pt::ExportKind kind, juce::String& error);
+    bool renderWavToFile (const juce::File& dest, pt::ExportKind kind, juce::String& error);
 
 private:
     juce::AudioProcessorValueTreeState apvts;
     pt::ParamPtrs params;
     pt::PresetManager presets;
 
-    pt::ExampleEffect effect[2];
+    pt::ToneRenderer renderer;
 
-    // Every user-facing gain and mix control is smoothed rather than applied
-    // as a raw sample-and-hold read of the parameter - the zipper noise a
-    // knob produces without this is one of the fastest ways an otherwise
-    // fine-sounding plugin reads as unfinished.
-    juce::SmoothedValue<float> smoothedInput, smoothedOutput, smoothedMix, smoothedBypass;
-
-    // Scratch space for the per-sample ramps below, sized once in
-    // prepareToPlay() rather than allocated inside processBlock().
+    juce::SmoothedValue<float> smoothedOutput, smoothedMix, smoothedBypass;
     juce::AudioBuffer<float> rampBuffer;
+    juce::AudioBuffer<float> genBuffer;
+
+    std::atomic<bool>   playing { false };
+    std::atomic<bool>   retrigger { false };
+    std::atomic<double> playbackSeconds { 0.0 };
 
     double currentSampleRate = 44100.0;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginTemplateAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (BinauralBeatsAudioProcessor)
 };

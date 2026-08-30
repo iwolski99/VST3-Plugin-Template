@@ -19,18 +19,18 @@ struct KnobArt
     juce::Image body;
 };
 
-const juce::Image& PluginTemplateLookAndFeel::knobBodyImage() const
+const juce::Image& BinauralBeatsLookAndFeel::knobBodyImage() const
 {
     return knobArt->body;
 }
 
-PluginTemplateLookAndFeel::PluginTemplateLookAndFeel()
+BinauralBeatsLookAndFeel::BinauralBeatsLookAndFeel()
     : theme (getTheme())
 {
     setTheme (theme);
 }
 
-void PluginTemplateLookAndFeel::setTheme (const Theme& t)
+void BinauralBeatsLookAndFeel::setTheme (const Theme& t)
 {
     theme = t;
 
@@ -63,19 +63,19 @@ void PluginTemplateLookAndFeel::setTheme (const Theme& t)
 // actually reads as "expensive" at this size is spacing and weight
 // discipline, which the platform font does perfectly well once it is asked
 // properly.
-juce::Font PluginTemplateLookAndFeel::titleFont (float height, float tracking)
+juce::Font BinauralBeatsLookAndFeel::titleFont (float height, float tracking)
 {
     auto f = juce::Font (juce::FontOptions (height, juce::Font::bold));
     return tracking != 0.0f ? f.withExtraKerningFactor (tracking) : f;
 }
 
-juce::Font PluginTemplateLookAndFeel::labelFont (float height, bool bold, float tracking)
+juce::Font BinauralBeatsLookAndFeel::labelFont (float height, bool bold, float tracking)
 {
     auto f = juce::Font (juce::FontOptions (height, bold ? juce::Font::bold : juce::Font::plain));
     return tracking != 0.0f ? f.withExtraKerningFactor (tracking) : f;
 }
 
-void PluginTemplateLookAndFeel::drawCentredTracked (juce::Graphics& g, const juce::String& text,
+void BinauralBeatsLookAndFeel::drawCentredTracked (juce::Graphics& g, const juce::String& text,
                                                     juce::Rectangle<float> area)
 {
     const auto& f = g.getCurrentFont();
@@ -89,7 +89,7 @@ void PluginTemplateLookAndFeel::drawCentredTracked (juce::Graphics& g, const juc
 }
 
 //==============================================================================
-void PluginTemplateLookAndFeel::dropShadow (juce::Graphics& g, juce::Rectangle<float> b,
+void BinauralBeatsLookAndFeel::dropShadow (juce::Graphics& g, juce::Rectangle<float> b,
                                             float corner, float depth, float strength)
 {
     constexpr int layers = 4;
@@ -105,7 +105,7 @@ void PluginTemplateLookAndFeel::dropShadow (juce::Graphics& g, juce::Rectangle<f
     }
 }
 
-void PluginTemplateLookAndFeel::bloom (juce::Graphics& g, juce::Point<float> centre, float radius,
+void BinauralBeatsLookAndFeel::bloom (juce::Graphics& g, juce::Point<float> centre, float radius,
                                        juce::Colour colour, float strength)
 {
     if (strength <= 0.005f || radius <= 0.0f)
@@ -120,7 +120,7 @@ void PluginTemplateLookAndFeel::bloom (juce::Graphics& g, juce::Point<float> cen
     g.fillEllipse (juce::Rectangle<float> (radius * 2.0f, radius * 2.0f).withCentre (centre));
 }
 
-void PluginTemplateLookAndFeel::drawActivePill (juce::Graphics& g, juce::Rectangle<float> b,
+void BinauralBeatsLookAndFeel::drawActivePill (juce::Graphics& g, juce::Rectangle<float> b,
                                                 float corner, juce::Colour accent, float intensity)
 {
     const float k = juce::jlimit (0.0f, 1.0f, intensity);
@@ -146,7 +146,7 @@ void PluginTemplateLookAndFeel::drawActivePill (juce::Graphics& g, juce::Rectang
     g.drawRoundedRectangle (b.reduced (0.5f), corner, 1.1f);
 }
 
-juce::Colour PluginTemplateLookAndFeel::pillTextColour (juce::Colour accent) noexcept
+juce::Colour BinauralBeatsLookAndFeel::pillTextColour (juce::Colour accent) noexcept
 {
     return accent.getPerceivedBrightness() > 0.55f
              ? juce::Colour (0xff10131a).withAlpha (0.94f)
@@ -154,7 +154,7 @@ juce::Colour PluginTemplateLookAndFeel::pillTextColour (juce::Colour accent) noe
 }
 
 //==============================================================================
-void PluginTemplateLookAndFeel::drawPanel (juce::Graphics& g, juce::Rectangle<float> b,
+void BinauralBeatsLookAndFeel::drawPanel (juce::Graphics& g, juce::Rectangle<float> b,
                                            const Theme& t, float corner)
 {
     dropShadow (g, b, corner, 5.0f, 0.34f);
@@ -181,7 +181,7 @@ void PluginTemplateLookAndFeel::drawPanel (juce::Graphics& g, juce::Rectangle<fl
 }
 
 //==============================================================================
-void PluginTemplateLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+void BinauralBeatsLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                                                   float sliderPos, float startAngle, float endAngle,
                                                   juce::Slider& slider)
 {
@@ -368,7 +368,7 @@ void PluginTemplateLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int 
 }
 
 //==============================================================================
-void PluginTemplateLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
+void BinauralBeatsLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
                                               int, int, int, int, juce::ComboBox& box)
 {
     auto b = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height).reduced (0.5f);
@@ -404,24 +404,24 @@ void PluginTemplateLookAndFeel::drawComboBox (juce::Graphics& g, int width, int 
                                                juce::PathStrokeType::rounded));
 }
 
-void PluginTemplateLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
+void BinauralBeatsLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
 {
     label.setBounds (8, 0, box.getWidth() - 24, box.getHeight());
     label.setFont (getComboBoxFont (box));
     label.setJustificationType (juce::Justification::centredLeft);
 }
 
-juce::Font PluginTemplateLookAndFeel::getComboBoxFont (juce::ComboBox&)
+juce::Font BinauralBeatsLookAndFeel::getComboBoxFont (juce::ComboBox&)
 {
     return labelFont (12.0f, false, 0.012f);
 }
 
-juce::Font PluginTemplateLookAndFeel::getPopupMenuFont()
+juce::Font BinauralBeatsLookAndFeel::getPopupMenuFont()
 {
     return labelFont (13.0f, false, 0.010f);
 }
 
-void PluginTemplateLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
+void BinauralBeatsLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
 {
     auto b = juce::Rectangle<float> (0.0f, 0.0f, (float) width, (float) height);
 
@@ -435,7 +435,7 @@ void PluginTemplateLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int 
 }
 
 //==============================================================================
-void PluginTemplateLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button,
+void BinauralBeatsLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button,
                                                       const juce::Colour& backgroundColour,
                                                       bool highlighted, bool down)
 {
@@ -471,7 +471,7 @@ void PluginTemplateLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::B
     g.drawRoundedRectangle (b, ui::controlCorner, 1.0f);
 }
 
-void PluginTemplateLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button,
+void BinauralBeatsLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button,
                                                 bool highlighted, bool)
 {
     const bool on = button.getToggleState();

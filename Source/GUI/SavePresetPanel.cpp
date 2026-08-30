@@ -14,7 +14,7 @@ SavePresetPanel::SavePresetPanel()
     setVisible (false);
 
     nameEditor.setJustification (juce::Justification::centredLeft);
-    nameEditor.setFont (PluginTemplateLookAndFeel::labelFont (14.0f));
+    nameEditor.setFont (BinauralBeatsLookAndFeel::labelFont (14.0f));
     nameEditor.setSelectAllWhenFocused (true);
     nameEditor.setEscapeAndReturnKeysConsumed (true);
     nameEditor.onReturnKey = [this] { commit(); };
@@ -148,18 +148,18 @@ void SavePresetPanel::paint (juce::Graphics& g)
     g.setColour (theme.accent.withAlpha (0.75f));
     g.drawRoundedRectangle (p.reduced (0.5f), 10.0f, 1.2f);
 
-    g.setFont (PluginTemplateLookAndFeel::labelFont (12.0f, true));
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (12.0f, true));
     g.setColour (theme.accent);
     g.drawText ("SAVE PRESET", p.reduced (18.0f, 14.0f).removeFromTop (16.0f),
                 juce::Justification::topLeft);
 
-    g.setFont (PluginTemplateLookAndFeel::labelFont (10.5f));
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (10.5f));
     g.setColour (theme.textDim);
-    g.drawText ("Documents / PluginTemplate / Presets",
+    g.drawText ("Documents / BinauralBeats / Presets",
                 p.reduced (18.0f, 14.0f).removeFromTop (16.0f),
                 juce::Justification::topRight);
 
-    g.setFont (PluginTemplateLookAndFeel::labelFont (8.5f, true, 0.12f));
+    g.setFont (BinauralBeatsLookAndFeel::labelFont (8.5f, true, 0.12f));
     g.setColour (theme.textDim.withAlpha (0.8f));
     g.drawText ("FOLDER", (int) p.getX() + 18, (int) p.getY() + 82, 120, 12,
                 juce::Justification::centredLeft);

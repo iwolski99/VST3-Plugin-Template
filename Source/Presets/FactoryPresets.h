@@ -7,10 +7,10 @@ namespace pt
 
 /** The browser's fixed sidebar. Pre-made so a user never has to build the
     obvious folders by hand; "All" is synthesised by the browser and is not
-    stored on any preset. Trim or extend this list for your own plugin. */
+    stored on any preset. */
 inline juce::StringArray presetCategories()
 {
-    return { "Vocals", "Drums", "Synths", "Guitar", "Mix Bus", "Special", "User" };
+    return { "Delta", "Theta", "Alpha", "Beta", "Gamma", "Tones", "Special", "User" };
 }
 
 struct FactoryPreset

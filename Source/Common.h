@@ -5,5 +5,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include <array>
+#include <atomic>
 #include <cmath>
+#include <memory>
 #include <vector>

@@ -17,7 +17,7 @@ characters and the first character of each must be uppercase (VST3 rules -
 juce_add_plugin() will refuse to configure otherwise).
 
 What this does:
-  - Replaces the token "PluginTemplate" everywhere (class names, the CMake
+  - Replaces the token "BinauralBeats" everywhere (class names, the CMake
     project/target name, build_windows.bat, the preset file extension and
     folder name) with your plugin name, in both TitleCase and lowercase forms
     where that distinction matters (e.g. .plugintemplatepreset).
@@ -35,7 +35,7 @@ import pathlib
 import re
 import sys
 
-OLD_NAME = "PluginTemplate"
+OLD_NAME = "BinauralBeats"
 
 TEXT_EXTENSIONS = {".cpp", ".h", ".hpp", ".txt", ".bat", ".sh", ".py", ".md", ".yml", ".yaml"}
 
