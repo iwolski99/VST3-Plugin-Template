@@ -16,7 +16,7 @@ namespace
 //==============================================================================
 BinauralBeatsAudioProcessorEditor::BinauralBeatsAudioProcessorEditor (BinauralBeatsAudioProcessor& p)
     : AudioProcessorEditor (&p),
-      processor (p),
+      plugin (p),
       mainPanel (p),
       header (p.getAPVTS(), pt::pid::bypass),
       footer (p.getAPVTS(), p.getPresetManager()),
@@ -37,7 +37,7 @@ BinauralBeatsAudioProcessorEditor::BinauralBeatsAudioProcessorEditor (BinauralBe
 
     savePanel.onSave = [this] (const juce::String& name, const juce::String& category)
     {
-        processor.getPresetManager().saveUser (name, category);
+        plugin.getPresetManager().saveUser (name, category);
         footer.refreshPresetList();
     };
 
@@ -45,7 +45,7 @@ BinauralBeatsAudioProcessorEditor::BinauralBeatsAudioProcessorEditor (BinauralBe
 
     footer.onRequestSave = [this]
     {
-        savePanel.show (processor.getPresetManager().getCurrentName());
+        savePanel.show (plugin.getPresetManager().getCurrentName());
     };
 
     footer.onBrowsePresets = [this] { presetBrowser.show(); };
@@ -107,7 +107,7 @@ int BinauralBeatsAudioProcessorEditor::clampZoomToDisplay (int percent) const
 
     if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
     {
-        const auto area = display->userArea;
+        const auto area = display->userBounds.toNearestInt();
 
         while (idx > 0)
         {

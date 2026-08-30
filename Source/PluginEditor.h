@@ -33,7 +33,7 @@ private:
     void storeZoom (int percent) const;
     int  clampZoomToDisplay (int percent) const;
 
-    BinauralBeatsAudioProcessor& processor;
+    BinauralBeatsAudioProcessor& plugin;
 
     pt::BinauralBeatsLookAndFeel lookAndFeel;
 

@@ -36,7 +36,7 @@ inline bool renderToWav (const juce::File& file,
 
     file.getParentDirectory().createDirectory();
 
-    auto stream = std::unique_ptr<juce::FileOutputStream> (file.createOutputStream());
+    auto stream = std::unique_ptr<juce::OutputStream> (file.createOutputStream().release());
     if (stream == nullptr)
     {
         error = "Could not create " + file.getFullPathName();
@@ -44,16 +44,17 @@ inline bool renderToWav (const juce::File& file,
     }
 
     juce::WavAudioFormat format;
-    std::unique_ptr<juce::AudioFormatWriter> writer (format.createWriterFor (
-        stream.get(), sr, (unsigned) ch, 16, {}, 0));
+    const auto options = juce::AudioFormatWriterOptions{}
+                             .withSampleRate (sr)
+                             .withNumChannels (ch)
+                             .withBitsPerSample (16);
 
+    auto writer = format.createWriterFor (stream, options);
     if (writer == nullptr)
     {
         error = "Could not open a WAV writer";
         return false;
     }
-
-    stream.release();
 
     ToneRenderer renderer;
     renderer.prepare (sr);
