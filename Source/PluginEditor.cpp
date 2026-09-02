@@ -189,7 +189,7 @@ int FoundryAudioProcessorEditor::clampZoomToDisplay (int percent) const
 
     if (auto* display = juce::Desktop::getInstance().getDisplays().getPrimaryDisplay())
     {
-        const auto area = display->userArea;
+        const auto area = display->userBounds;
 
         while (idx > 0)
         {

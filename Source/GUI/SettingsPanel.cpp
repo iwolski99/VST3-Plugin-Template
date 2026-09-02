@@ -152,8 +152,8 @@ void SettingsPanel::pickRoot()
 {
     chooser = std::make_unique<juce::FileChooser> ("Choose Foundry library root",
                                                    processor.getConfig().root(), "*");
-    auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories;
-    chooser->launchAsync (flags, [this] (const juce::FileChooser& fc)
+    const auto browserFlags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories;
+    chooser->launchAsync (browserFlags, [this] (const juce::FileChooser& fc)
     {
         auto f = fc.getResult();
         if (f.isDirectory())
@@ -174,8 +174,8 @@ void SettingsPanel::pickFolder (foundry::FolderRole role)
         start = processor.getConfig().root();
 
     chooser = std::make_unique<juce::FileChooser> ("Map " + foundry::folderRoleName (role), start, "*");
-    auto flags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories;
-    chooser->launchAsync (flags, [this, role] (const juce::FileChooser& fc)
+    const auto browserFlags = juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories;
+    chooser->launchAsync (browserFlags, [this, role] (const juce::FileChooser& fc)
     {
         auto f = fc.getResult();
         if (f.isDirectory())

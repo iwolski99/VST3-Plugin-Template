@@ -113,12 +113,12 @@ DrumPanel::DrumPanel (FoundryAudioProcessor& p)
         const int id = loadPatternBox.getSelectedId();
         if (id <= 1)
             return;
-        foundry::DrumPattern p;
-        if (processor.getConfig().loadCustomPattern (loadPatternBox.getText(), p))
+        foundry::DrumPattern loaded;
+        if (processor.getConfig().loadCustomPattern (loadPatternBox.getText(), loaded))
         {
-            processor.getDrumPattern() = p;
-            processor.setUiBars (p.bars);
-            grid.setPattern (p);
+            processor.getDrumPattern() = loaded;
+            processor.setUiBars (loaded.bars);
+            grid.setPattern (loaded);
         }
     };
 
@@ -179,7 +179,13 @@ void DrumPanel::applyLock (const foundry::LibraryItem& item)
         case foundry::Category::OneShotSnare: row = 1; break;
         case foundry::Category::OneShotHat:   row = 2; break;
         case foundry::Category::OneShotRide:  row = 3; break;
-        default: break;
+        case foundry::Category::DrumLoopsRiddim:
+        case foundry::Category::DrumLoopsDubstep:
+        case foundry::Category::BassLoopsBase:
+        case foundry::Category::BassLoopsSpliced:
+        case foundry::Category::OneShotBass:
+        case foundry::Category::Unknown:
+            break;
     }
     if (row < 0)
         return;
@@ -225,6 +231,7 @@ void DrumPanel::resized()
     if (banner.isVisible())
         banner.setBounds (b.removeFromTop (34)), b.removeFromTop (8);
 
+    b.removeFromTop (12);
     auto left = b.removeFromLeft (280);
     auto row = left.removeFromTop (22);
     styleBox.setBounds (row.removeFromLeft (130));
@@ -277,7 +284,7 @@ void DrumPanel::paint (juce::Graphics& g)
 
     g.setFont (FoundryLookAndFeel::labelFont (8.5f, true, 0.14f));
     g.setColour (theme.textDim);
-    g.drawText ("STYLE", 22, 16, 80, 12, juce::Justification::centredLeft);
+    g.drawText ("STYLE", 22, 20, 80, 12, juce::Justification::centredLeft);
 }
 
 } // namespace pt

@@ -78,7 +78,7 @@ juce::AudioBuffer<float> AudioIO::resample (const juce::AudioBuffer<float>& src,
 }
 
 bool AudioIO::loadWav (const juce::File& file, juce::AudioBuffer<float>& buffer,
-                       double& sampleRate, juce::String& error) const
+                       double& sampleRate, juce::String& error)
 {
     if (! file.existsAsFile())
     {
@@ -125,7 +125,7 @@ bool AudioIO::loadWav (const juce::File& file, juce::AudioBuffer<float>& buffer,
 }
 
 bool AudioIO::writeWav (const juce::File& file, const juce::AudioBuffer<float>& buffer,
-                        double sampleRate, int bitDepth, juce::String& error) const
+                        double sampleRate, int bitDepth, juce::String& error)
 {
     if (buffer.getNumSamples() <= 0 || buffer.getNumChannels() <= 0)
     {
@@ -143,10 +143,10 @@ bool AudioIO::writeWav (const juce::File& file, const juce::AudioBuffer<float>& 
     if (file.existsAsFile())
         file.deleteFile();
 
-    auto* os = new juce::FileOutputStream (file);
-    if (os->failedToOpen())
+    auto os = std::unique_ptr<juce::OutputStream> (new juce::FileOutputStream (file));
+    auto* fos = dynamic_cast<juce::FileOutputStream*> (os.get());
+    if (fos == nullptr || fos->failedToOpen())
     {
-        delete os;
         error = "Cannot write file (permission or disk error): " + file.getFullPathName();
         return false;
     }
@@ -154,13 +154,16 @@ bool AudioIO::writeWav (const juce::File& file, const juce::AudioBuffer<float>& 
     juce::WavAudioFormat wav;
     const int bits = bitDepth == 16 ? 16 : 24;
     const int chans = juce::jlimit (1, 2, buffer.getNumChannels());
-
     juce::AudioChannelSet layout = chans == 1 ? juce::AudioChannelSet::mono()
                                               : juce::AudioChannelSet::stereo();
 
-    std::unique_ptr<juce::AudioFormatWriter> writer (
-        wav.createWriterFor (os, sampleRate, layout, bits, {}, 0));
+    const auto options = juce::AudioFormatWriterOptions{}
+                             .withSampleRate (sampleRate)
+                             .withChannelLayout (layout)
+                             .withBitsPerSample (bits)
+                             .withNumChannels (chans);
 
+    auto writer = wav.createWriterFor (os, options);
     if (writer == nullptr)
     {
         error = "Could not create WAV writer for " + file.getFileName();

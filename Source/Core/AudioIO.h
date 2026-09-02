@@ -11,10 +11,10 @@ public:
     AudioIO();
 
     bool loadWav (const juce::File& file, juce::AudioBuffer<float>& buffer,
-                  double& sampleRate, juce::String& error) const;
+                  double& sampleRate, juce::String& error);
 
     bool writeWav (const juce::File& file, const juce::AudioBuffer<float>& buffer,
-                   double sampleRate, int bitDepth, juce::String& error) const;
+                   double sampleRate, int bitDepth, juce::String& error);
 
     static juce::AudioBuffer<float> resample (const juce::AudioBuffer<float>& src,
                                               double srcRate, double dstRate);
