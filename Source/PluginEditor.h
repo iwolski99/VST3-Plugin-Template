@@ -1,52 +1,62 @@
 #pragma once
 
 #include "PluginProcessor.h"
+#include "GUI/BassPanel.h"
+#include "GUI/DrumPanel.h"
 #include "GUI/FooterBar.h"
 #include "GUI/HeaderBar.h"
+#include "GUI/LibraryPanel.h"
 #include "GUI/LookAndFeel.h"
-#include "GUI/MainPanel.h"
-#include "GUI/PresetBrowser.h"
-#include "GUI/SavePresetPanel.h"
+#include "GUI/ProgressOverlay.h"
+#include "GUI/SettingsPanel.h"
+#include "GUI/SplicerPanel.h"
+#include "GUI/TabBar.h"
+#include "GUI/Widgets.h"
 
 //==============================================================================
-class PluginTemplateAudioProcessorEditor : public juce::AudioProcessorEditor
+class FoundryAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                    public juce::DragAndDropContainer,
+                                    private juce::ChangeListener
 {
 public:
-    explicit PluginTemplateAudioProcessorEditor (PluginTemplateAudioProcessor&);
-    ~PluginTemplateAudioProcessorEditor() override;
+    explicit FoundryAudioProcessorEditor (FoundryAudioProcessor&);
+    ~FoundryAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
 
-    /** Design size at 100 %. Deliberately compact so 100 % already fits a
-        1366 x 768 laptop panel with room for the host's window frame - the
-        zoom list covers everything from a netbook to a 4K desktop. */
-    static constexpr int kBaseWidth  = 640;
-    static constexpr int kBaseHeight = 420;
+    static constexpr int kBaseWidth  = 1120;
+    static constexpr int kBaseHeight = 740;
 
 private:
     void applyTheme (const pt::Theme& t);
-
+    void showTab (int index);
     void setZoomPercent (int percent, bool store);
     int  loadStoredZoom() const;
-    void storeZoom (int percent) const;
+    void storeZoom (int percent);
     int  clampZoomToDisplay (int percent) const;
+    void changeListenerCallback (juce::ChangeBroadcaster*) override;
 
-    PluginTemplateAudioProcessor& processor;
+    FoundryAudioProcessor& processor;
 
-    pt::PluginTemplateLookAndFeel lookAndFeel;
+    pt::FoundryLookAndFeel lookAndFeel;
 
     juce::Component content;
-    pt::MainPanel mainPanel;
-
     pt::HeaderBar header;
+    pt::TabBar tabs;
+    pt::LibraryPanel libraryPanel;
+    pt::DrumPanel drumPanel;
+    pt::BassPanel bassPanel;
+    pt::SplicerPanel splicerPanel;
+    pt::SettingsPanel settingsPanel;
     pt::FooterBar footer;
-    pt::SavePresetPanel savePanel;
-    pt::PresetBrowser   presetBrowser;
+    pt::ProgressOverlay overlay;
+    pt::StatusBanner banner;
 
-    juce::TooltipWindow tooltips { this, 750 };
+    juce::TooltipWindow tooltips { this, 700 };
 
     int zoomPercent = 100;
+    int currentTab = 0;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginTemplateAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FoundryAudioProcessorEditor)
 };

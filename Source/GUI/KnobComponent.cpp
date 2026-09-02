@@ -90,7 +90,7 @@ void Knob::paint (juce::Graphics& g)
     const bool live = hot || slider.isMouseOverOrDragging();
 
     // --- name ---------------------------------------------------------------
-    g.setFont (PluginTemplateLookAndFeel::labelFont (juce::jmax (8.5f, 10.0f * scale), true, 0.085f));
+    g.setFont (FoundryLookAndFeel::labelFont (juce::jmax (8.5f, 10.0f * scale), true, 0.085f));
     g.setColour ((live ? dimCol.brighter (0.45f) : dimCol.withAlpha (0.82f))
                      .withMultipliedAlpha (enabledAlpha));
     g.drawFittedText (name.toUpperCase(), b.removeFromTop (nameH),
@@ -100,7 +100,7 @@ void Knob::paint (juce::Graphics& g)
     // Slightly larger and lit under the pointer; quiet the rest of the time.
     auto valueArea = b.removeFromBottom (valueH);
 
-    g.setFont (PluginTemplateLookAndFeel::labelFont (juce::jmax (9.0f, (live ? 11.9f : 11.0f) * scale),
+    g.setFont (FoundryLookAndFeel::labelFont (juce::jmax (9.0f, (live ? 11.9f : 11.0f) * scale),
                                                      live, 0.010f));
 
     // Recessed well behind the digits, sized to the text rather than the full
@@ -185,7 +185,7 @@ void Combo::resized()
 
 void Combo::paint (juce::Graphics& g)
 {
-    g.setFont (PluginTemplateLookAndFeel::labelFont (10.0f, true, 0.085f));
+    g.setFont (FoundryLookAndFeel::labelFont (10.0f, true, 0.085f));
     g.setColour (dimCol.withAlpha (box.isEnabled() ? 0.82f : 0.4f));
     g.drawFittedText (name.toUpperCase(), getLocalBounds().removeFromTop (14),
                       juce::Justification::centred, 1);
@@ -305,16 +305,16 @@ void ModeSwitch::paint (juce::Graphics& g)
     const auto activeSeg = full.withWidth (segW).withX (full.getX() + segW * (float) selected)
                                .reduced (2.0f);
 
-    PluginTemplateLookAndFeel::drawActivePill (g, activeSeg, juce::jmax (1.0f, r - 2.0f),
+    FoundryLookAndFeel::drawActivePill (g, activeSeg, juce::jmax (1.0f, r - 2.0f),
                                                theme.accent, hovered == selected ? 1.0f : 0.94f);
 
-    g.setFont (PluginTemplateLookAndFeel::labelFont (n > 2 ? 8.5f : 9.6f, true, 0.075f));
+    g.setFont (FoundryLookAndFeel::labelFont (n > 2 ? 8.5f : 9.6f, true, 0.075f));
 
     for (int i = 0; i < n; ++i)
     {
         const auto area = full.withWidth (segW).withX (full.getX() + segW * (float) i);
 
-        g.setColour (i == selected ? PluginTemplateLookAndFeel::pillTextColour (theme.accent)
+        g.setColour (i == selected ? FoundryLookAndFeel::pillTextColour (theme.accent)
                                    : theme.textDim.withAlpha (hovered == i ? 0.95f : 0.62f));
 
         g.drawText (labels[i].toUpperCase(), area, juce::Justification::centred);

@@ -26,14 +26,19 @@ jobs:
             libasound2-dev
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DTEMPLATE_BUILD_TESTS=ON
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DFOUNDRY_BUILD_TESTS=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      - name: Run tests
+      - name: Run engine tests
+        shell: bash
+        run: |
+          find build -iname "FoundryEngineTest" -type f -perm -u+x -exec {} \; -quit
+          find build -iname "FoundryEngineTest.exe" -type f -exec {} \; -quit
+
+      - name: Run lifecycle tests
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          find build -iname "TemplateDspTest" -type f -perm -u+x -exec {} \; -quit
-          find build -iname "TemplateLifecycleTest" -type f -perm -u+x -exec {} \; -quit
+          find build -iname "FoundryLifecycleTest" -type f -perm -u+x -exec {} \; -quit

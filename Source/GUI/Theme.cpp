@@ -3,15 +3,15 @@
 namespace pt
 {
 
-// Deep indigo / violet, chosen only as a starting point that already looks
-// deliberate rather than as a "final" brand colour - see Theme.h for how to
-// replace it.
+// Forged steel and molten metal. Warm charcoal ground, ember gold as the
+// working accent, copper as the secondary heat. Every other colour in the
+// plugin is derived from these eight.
 static const Theme theme
 {
-    juce::Colour (0xff1f1a2e), juce::Colour (0xff0e0c17),   // bgTop, bgBottom
-    juce::Colour (0xff272038), juce::Colour (0xff3d3358),   // panel, panelEdge
-    juce::Colour (0xff9a7cf2), juce::Colour (0xff5ec4b8),   // accent, accentAlt
-    juce::Colour (0xfff2eefc), juce::Colour (0xff938bb0),   // text, textDim
+    juce::Colour (0xff161310), juce::Colour (0xff090807),   // bgTop, bgBottom
+    juce::Colour (0xff221c16), juce::Colour (0xff4a3c2e),   // panel, panelEdge
+    juce::Colour (0xffe2a045), juce::Colour (0xffe25a2a),   // accent, accentAlt
+    juce::Colour (0xfff4eadc), juce::Colour (0xff9a8b78),   // text, textDim
 };
 
 const Theme& getTheme() noexcept

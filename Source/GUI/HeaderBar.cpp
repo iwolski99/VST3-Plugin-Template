@@ -3,101 +3,89 @@
 namespace pt
 {
 
-HeaderBar::HeaderBar (juce::AudioProcessorValueTreeState& state, const juce::String& parameterID)
-    : bypassToggle (state, parameterID, "Bypass"),
-      pluginTitle ("PLUGIN NAME"),
-      theme (getTheme())
+HeaderBar::HeaderBar()
+    : theme (getTheme())
 {
-    bypassToggle.setAccent (theme.accentAlt);
-    addAndMakeVisible (bypassToggle);
-}
-
-void HeaderBar::setTitle (const juce::String& title, const juce::String& tagline)
-{
-    pluginTitle = title;
-    pluginTagline = tagline;
-    repaint();
+    settingsButton.setClickingTogglesState (false);
+    settingsButton.setTooltip ("Library folders, audio defaults, database");
+    settingsButton.onClick = [this] { if (onSettings) onSettings(); };
+    addAndMakeVisible (settingsButton);
 }
 
 void HeaderBar::setTheme (const Theme& t)
 {
     theme = t;
-    bypassToggle.setAccent (t.accentAlt);
+    settingsButton.setColour (juce::TextButton::buttonColourId, t.accent);
+    settingsButton.setColour (juce::TextButton::buttonOnColourId, t.accent);
     repaint();
 }
 
 void HeaderBar::resized()
 {
     auto b = getLocalBounds();
-    bypassToggle.setBounds (b.getWidth() - 90, (b.getHeight() - 24) / 2, 72, 24);
+    settingsButton.setBounds (b.getWidth() - 108, (b.getHeight() - 26) / 2, 90, 26);
 }
 
 void HeaderBar::paint (juce::Graphics& g)
 {
     auto b = getLocalBounds().toFloat();
 
-    juce::ColourGradient bar (theme.bgTop.brighter (0.14f), 0.0f, 0.0f,
-                              theme.bgTop.darker (0.32f), 0.0f, b.getBottom(), false);
-    bar.addColour (0.62, theme.bgTop.darker (0.08f));
+    juce::ColourGradient bar (theme.bgTop.brighter (0.12f), 0.0f, 0.0f,
+                              theme.bgTop.darker (0.38f), 0.0f, b.getBottom(), false);
+    bar.addColour (0.62, theme.bgTop.darker (0.10f));
     g.setGradientFill (bar);
     g.fillRect (b);
 
-    // The header's own shadow onto the content below it, so the bar reads as
-    // a layer in front rather than as the same surface with a line drawn on
-    // it.
-    juce::ColourGradient cast (juce::Colours::black.withAlpha (0.26f), 0.0f, b.getBottom(),
-                               juce::Colours::transparentBlack, 0.0f, b.getBottom() + 9.0f, false);
+    juce::ColourGradient cast (juce::Colours::black.withAlpha (0.28f), 0.0f, b.getBottom(),
+                               juce::Colours::transparentBlack, 0.0f, b.getBottom() + 10.0f, false);
     g.setGradientFill (cast);
-    g.fillRect (0.0f, b.getBottom() - 9.0f, b.getWidth(), 9.0f);
+    g.fillRect (0.0f, b.getBottom() - 10.0f, b.getWidth(), 10.0f);
 
-    juce::ColourGradient spill (juce::Colours::transparentBlack, 0.0f, b.getBottom() - 14.0f,
-                                theme.accent.withAlpha (0.13f), 0.0f, b.getBottom(), false);
+    juce::ColourGradient spill (juce::Colours::transparentBlack, 0.0f, b.getBottom() - 16.0f,
+                                theme.accent.withAlpha (0.16f), 0.0f, b.getBottom(), false);
     g.setGradientFill (spill);
-    g.fillRect (0.0f, b.getBottom() - 14.0f, b.getWidth(), 14.0f);
+    g.fillRect (0.0f, b.getBottom() - 16.0f, b.getWidth(), 16.0f);
 
-    g.setColour (theme.accent.withAlpha (0.5f));
+    g.setColour (theme.accent.withAlpha (0.55f));
     g.fillRect (0.0f, b.getBottom() - 1.0f, b.getWidth(), 1.0f);
 
-    // --- wordmark -------------------------------------------------------------
-    // A simple triangular glyph as a placeholder mark - swap this path for
-    // your own logo. It exists mainly to prove the pattern: a small shape
-    // filled with an accent gradient plus a touch of bloom reads as a mark
-    // rather than a decoration, at almost no drawing cost.
+    // Ingot / anvil mark — a trapezoid block with a striking face.
     {
-        auto mark = juce::Rectangle<float> (16.0f, b.getCentreY() - 11.0f, 22.0f, 22.0f);
+        auto mark = juce::Rectangle<float> (18.0f, b.getCentreY() - 13.0f, 28.0f, 26.0f);
 
-        juce::Path glyph;
-        glyph.startNewSubPath (mark.getCentreX(), mark.getY());
-        glyph.lineTo (mark.getRight(), mark.getBottom());
-        glyph.lineTo (mark.getX(), mark.getBottom());
-        glyph.closeSubPath();
+        juce::Path ingot;
+        ingot.startNewSubPath (mark.getX() + 4.0f, mark.getY() + 6.0f);
+        ingot.lineTo (mark.getRight() - 4.0f, mark.getY() + 6.0f);
+        ingot.lineTo (mark.getRight(), mark.getBottom() - 3.0f);
+        ingot.lineTo (mark.getX(), mark.getBottom() - 3.0f);
+        ingot.closeSubPath();
 
         g.setGradientFill (juce::ColourGradient (theme.accent, mark.getX(), mark.getBottom(),
                                                  theme.accentAlt, mark.getRight(), mark.getY(), false));
-        g.fillPath (glyph);
+        g.fillPath (ingot);
 
-        PluginTemplateLookAndFeel::bloom (g, mark.getCentre(), 18.0f, theme.accent, 0.14f);
+        g.setColour (juce::Colours::white.withAlpha (0.28f));
+        g.drawLine (mark.getX() + 6.0f, mark.getY() + 8.0f,
+                    mark.getRight() - 6.0f, mark.getY() + 8.0f, 1.2f);
+
+        FoundryLookAndFeel::bloom (g, mark.getCentre(), 20.0f, theme.accentAlt, 0.18f);
     }
 
-    // --- title ----------------------------------------------------------------
     {
-        auto titleArea = juce::Rectangle<float> (b.getWidth() * 0.5f - 220.0f, 8.0f, 440.0f, 30.0f);
+        auto titleArea = juce::Rectangle<float> (52.0f, 8.0f, 280.0f, 26.0f);
+        g.setFont (FoundryLookAndFeel::titleFont (22.0f, 0.42f));
 
-        g.setFont (PluginTemplateLookAndFeel::titleFont (20.0f, 0.30f));
-
-        g.setColour (juce::Colours::black.withAlpha (0.35f));
-        PluginTemplateLookAndFeel::drawCentredTracked (g, pluginTitle, titleArea.translated (0.0f, 1.4f));
+        g.setColour (juce::Colours::black.withAlpha (0.40f));
+        g.drawText ("FOUNDRY", titleArea.translated (0.0f, 1.5f), juce::Justification::centredLeft);
 
         g.setColour (theme.text);
-        PluginTemplateLookAndFeel::drawCentredTracked (g, pluginTitle, titleArea);
+        g.drawText ("FOUNDRY", titleArea, juce::Justification::centredLeft);
 
-        if (pluginTagline.isNotEmpty())
-        {
-            g.setColour (theme.textDim.withAlpha (0.88f));
-            g.setFont (PluginTemplateLookAndFeel::labelFont (9.5f, false, 0.14f));
-            PluginTemplateLookAndFeel::drawCentredTracked (g, pluginTagline,
-                juce::Rectangle<float> (b.getWidth() * 0.5f - 220.0f, 36.0f, 440.0f, 14.0f));
-        }
+        g.setColour (theme.textDim.withAlpha (0.92f));
+        g.setFont (FoundryLookAndFeel::labelFont (9.0f, false, 0.18f));
+        g.drawText ("YOUR SOUNDS IN. IDEAS OUT.",
+                    juce::Rectangle<float> (52.0f, 34.0f, 320.0f, 14.0f),
+                    juce::Justification::centredLeft);
     }
 }
 

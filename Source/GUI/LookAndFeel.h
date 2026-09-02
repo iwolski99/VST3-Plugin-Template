@@ -24,13 +24,13 @@ namespace ui
     scratch - that's what keeps forty controls looking like one instrument
     instead of forty separate widgets.
 
-    PluginTemplateLookAndFeel is the one identifier in this file worth
+    FoundryLookAndFeel is the one identifier in this file worth
     renaming to match your plugin (see scripts/rename_plugin.py) - everything
     it does is generic. */
-class PluginTemplateLookAndFeel : public juce::LookAndFeel_V4
+class FoundryLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    PluginTemplateLookAndFeel();
+    FoundryLookAndFeel();
 
     void setTheme (const Theme& t);
     const Theme& getCurrentTheme() const noexcept { return theme; }
@@ -71,6 +71,15 @@ public:
 
     void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
 
+    void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height,
+                        bool isScrollbarVertical, int thumbStartPosition, int thumbSize,
+                        bool isMouseOver, bool isMouseDown) override;
+
+    int getDefaultScrollbarWidth() override { return 9; }
+
+    void fillTextEditorBackground (juce::Graphics&, int width, int height, juce::TextEditor&) override;
+    void drawTextEditorOutline (juce::Graphics&, int width, int height, juce::TextEditor&) override;
+
     //== shared primitives =====================================================
     /** Smoked-glass container: a cast shadow, a vertical gradient body, a
         hairline edge and a top-lit rim. Every panel in the plugin should be
@@ -102,6 +111,9 @@ public:
         accent and a dark one both stay readable without hand-picking two text
         colours per theme. */
     static juce::Colour pillTextColour (juce::Colour accent) noexcept;
+
+    static void drawInsetWell (juce::Graphics&, juce::Rectangle<float> bounds, const Theme&,
+                               float corner = ui::controlCorner);
 
 private:
     /** The shared knob bitmap. Held by SharedResourcePointer rather than a

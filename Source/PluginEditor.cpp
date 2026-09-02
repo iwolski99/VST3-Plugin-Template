@@ -5,92 +5,174 @@ namespace
     juce::PropertiesFile::Options zoomStoreOptions()
     {
         juce::PropertiesFile::Options o;
-        o.applicationName = "PluginTemplate";
+        o.applicationName = "Foundry";
         o.filenameSuffix = "settings";
-        o.folderName = "PluginTemplate";
+        o.folderName = "Foundry";
         o.osxLibrarySubFolder = "Application Support";
         return o;
     }
 }
 
-//==============================================================================
-PluginTemplateAudioProcessorEditor::PluginTemplateAudioProcessorEditor (PluginTemplateAudioProcessor& p)
+FoundryAudioProcessorEditor::FoundryAudioProcessorEditor (FoundryAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processor (p),
-      mainPanel (p.getAPVTS()),
-      header (p.getAPVTS(), pt::pid::bypass),
-      footer (p.getAPVTS(), p.getPresetManager()),
-      presetBrowser (p.getPresetManager())
+      libraryPanel (p),
+      drumPanel (p),
+      bassPanel (p),
+      splicerPanel (p),
+      settingsPanel (p),
+      footer (p.getAPVTS(), p.getPreview()),
+      overlay (p.getWorker())
 {
     setLookAndFeel (&lookAndFeel);
-    header.setTitle ("PluginTemplate", "one-line description of what it does");
 
     addAndMakeVisible (content);
-    content.addAndMakeVisible (mainPanel);
     content.addAndMakeVisible (header);
+    content.addAndMakeVisible (tabs);
+    content.addAndMakeVisible (libraryPanel);
+    content.addChildComponent (drumPanel);
+    content.addChildComponent (bassPanel);
+    content.addChildComponent (splicerPanel);
+    content.addChildComponent (settingsPanel);
     content.addAndMakeVisible (footer);
+    content.addChildComponent (banner);
+    content.addChildComponent (overlay);
 
-    // Children of content, not of the editor directly, so the same zoom
-    // transform that scales the rest of the UI scales these overlays too.
-    content.addChildComponent (savePanel);
-    content.addChildComponent (presetBrowser);
-
-    savePanel.onSave = [this] (const juce::String& name, const juce::String& category)
+    header.onSettings = [this]
     {
-        processor.getPresetManager().saveUser (name, category);
-        footer.refreshPresetList();
+        settingsPanel.setVisible (true);
+        libraryPanel.setVisible (false);
+        drumPanel.setVisible (false);
+        bassPanel.setVisible (false);
+        splicerPanel.setVisible (false);
     };
 
-    presetBrowser.onPresetLoaded = [this] { footer.refreshPresetList(); };
+    auto openSettings = [this] { header.onSettings(); };
+    libraryPanel.onOpenSettings = openSettings;
+    drumPanel.onOpenSettings = openSettings;
+    bassPanel.onOpenSettings = openSettings;
+    splicerPanel.onOpenSettings = openSettings;
+    banner.onOpenSettings = openSettings;
 
-    footer.onRequestSave = [this]
+    libraryPanel.onSendToSplicer = [this] (const foundry::LibraryItem& it)
     {
-        savePanel.show (processor.getPresetManager().getCurrentName());
+        splicerPanel.addSource (it);
+        tabs.setSelected (3);
+        showTab (3);
+    };
+    libraryPanel.onLockFrom = [this] (const foundry::LibraryItem& it)
+    {
+        drumPanel.applyLock (it);
+        tabs.setSelected (1);
+        showTab (1);
     };
 
-    footer.onBrowsePresets = [this] { presetBrowser.show(); };
+    settingsPanel.onClose = [this]
+    {
+        settingsPanel.setVisible (false);
+        showTab (tabs.getSelected());
+        libraryPanel.refresh();
+    };
+    settingsPanel.onLibraryChanged = [this]
+    {
+        libraryPanel.refresh();
+        splicerPanel.refresh();
+    };
+
+    tabs.onTabChanged = [this] (int i) { showTab (i); };
+    tabs.setSelected (juce::jlimit (0, 3, p.getConfig().get().lastTab));
 
     footer.onZoomChanged = [this] (int percent) { setZoomPercent (percent, true); };
 
+    overlay.onCancel = [this] { processor.getWorker().requestCancel(); };
+
+    processor.getWorker().addChangeListener (this);
+    processor.addChangeListener (this);
+
     applyTheme (pt::getTheme());
+    showTab (tabs.getSelected());
 
     setResizable (false, false);
     setZoomPercent (clampZoomToDisplay (loadStoredZoom()), false);
 }
 
-PluginTemplateAudioProcessorEditor::~PluginTemplateAudioProcessorEditor()
+FoundryAudioProcessorEditor::~FoundryAudioProcessorEditor()
 {
+    processor.getWorker().removeChangeListener (this);
+    processor.removeChangeListener (this);
     setLookAndFeel (nullptr);
 }
 
-//==============================================================================
-void PluginTemplateAudioProcessorEditor::applyTheme (const pt::Theme& t)
+void FoundryAudioProcessorEditor::applyTheme (const pt::Theme& t)
 {
     lookAndFeel.setTheme (t);
-    mainPanel.setTheme (t);
     header.setTheme (t);
+    tabs.setTheme (t);
+    libraryPanel.setTheme (t);
+    drumPanel.setTheme (t);
+    bassPanel.setTheme (t);
+    splicerPanel.setTheme (t);
+    settingsPanel.setTheme (t);
     footer.setTheme (t);
-    presetBrowser.setTheme (t);
-    savePanel.setTheme (t);
+    overlay.setTheme (t);
+    banner.setTheme (t);
 }
 
-//==============================================================================
-int PluginTemplateAudioProcessorEditor::loadStoredZoom() const
+void FoundryAudioProcessorEditor::showTab (int index)
 {
+    currentTab = juce::jlimit (0, 3, index);
+    processor.getConfig().get().lastTab = currentTab;
+    settingsPanel.setVisible (false);
+    libraryPanel.setVisible (currentTab == 0);
+    drumPanel.setVisible (currentTab == 1);
+    bassPanel.setVisible (currentTab == 2);
+    splicerPanel.setVisible (currentTab == 3);
+
+    if (currentTab == 0)
+        libraryPanel.refresh();
+    if (currentTab == 1)
+        drumPanel.syncFromProcessor();
+    if (currentTab == 3)
+        splicerPanel.refresh();
+}
+
+void FoundryAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
+{
+    libraryPanel.refresh();
+    splicerPanel.refresh();
+    footer.refresh();
+
+    auto& w = processor.getWorker();
+    if (! w.isBusy())
+    {
+        const auto msg = w.lastMessage();
+        const bool err = ! w.lastSucceeded();
+        banner.setMessage (msg, err, err && (msg.containsIgnoreCase ("folder") || msg.containsIgnoreCase ("sample")
+                                             || msg.containsIgnoreCase ("Settings")));
+        resized();
+    }
+}
+
+int FoundryAudioProcessorEditor::loadStoredZoom() const
+{
+    if (processor.getConfig().get().uiZoom >= 50)
+        return processor.getConfig().get().uiZoom;
+
     juce::ApplicationProperties props;
     props.setStorageParameters (zoomStoreOptions());
-
     if (auto* file = props.getUserSettings())
         return file->getIntValue (pt::stateID::zoom, 100);
-
     return 100;
 }
 
-void PluginTemplateAudioProcessorEditor::storeZoom (int percent) const
+void FoundryAudioProcessorEditor::storeZoom (int percent)
 {
+    processor.getConfig().get().uiZoom = percent;
+    juce::String err;
+    processor.persistConfig (err);
+
     juce::ApplicationProperties props;
     props.setStorageParameters (zoomStoreOptions());
-
     if (auto* file = props.getUserSettings())
     {
         file->setValue (pt::stateID::zoom, percent);
@@ -98,7 +180,7 @@ void PluginTemplateAudioProcessorEditor::storeZoom (int percent) const
     }
 }
 
-int PluginTemplateAudioProcessorEditor::clampZoomToDisplay (int percent) const
+int FoundryAudioProcessorEditor::clampZoomToDisplay (int percent) const
 {
     const auto& options = pt::FooterBar::zoomOptions();
     int idx = options.indexOf (percent);
@@ -125,41 +207,41 @@ int PluginTemplateAudioProcessorEditor::clampZoomToDisplay (int percent) const
     return options[juce::jmax (0, idx)];
 }
 
-void PluginTemplateAudioProcessorEditor::setZoomPercent (int percent, bool store)
+void FoundryAudioProcessorEditor::setZoomPercent (int percent, bool store)
 {
     zoomPercent = percent;
     const float scale = (float) zoomPercent / 100.0f;
 
-    // Content itself always stays the fixed design size; only its transform
-    // scales, so lay it out before resizing the editor - the editor's
-    // resized() below reads content's bounds to place the overlays.
     content.setBounds (0, 0, kBaseWidth, kBaseHeight);
     content.setTransform (juce::AffineTransform::scale (scale));
     setSize (juce::roundToInt (kBaseWidth * scale), juce::roundToInt (kBaseHeight * scale));
-
     footer.setZoomPercent (zoomPercent);
 
     if (store)
         storeZoom (zoomPercent);
 }
 
-//==============================================================================
-void PluginTemplateAudioProcessorEditor::resized()
+void FoundryAudioProcessorEditor::resized()
 {
     auto b = content.getLocalBounds();
-
     header.setBounds (b.removeFromTop (56));
-    footer.setBounds (b.removeFromBottom (76));
-    mainPanel.setBounds (b.reduced (10));
+    tabs.setBounds (b.removeFromTop (38));
+    footer.setBounds (b.removeFromBottom (84));
 
-    savePanel.setBounds (content.getLocalBounds());
-    presetBrowser.setBounds (content.getLocalBounds());
+    if (banner.isVisible())
+        banner.setBounds (b.removeFromTop (32).reduced (10, 4));
+
+    libraryPanel.setBounds (b);
+    drumPanel.setBounds (b);
+    bassPanel.setBounds (b);
+    splicerPanel.setBounds (b);
+    settingsPanel.setBounds (b);
+    overlay.setBounds (content.getLocalBounds());
 }
 
-void PluginTemplateAudioProcessorEditor::paint (juce::Graphics& g)
+void FoundryAudioProcessorEditor::paint (juce::Graphics& g)
 {
     const auto& t = lookAndFeel.getCurrentTheme();
-
     juce::ColourGradient bg (t.bgTop, 0.0f, 0.0f, t.bgBottom, 0.0f, (float) getHeight(), false);
     g.setGradientFill (bg);
     g.fillAll();
