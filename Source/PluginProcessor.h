@@ -1,18 +1,19 @@
 #pragma once
 
-#include "Common.h"
 #include "Params/ParameterLayout.h"
-#include "DSP/ExampleEffect.h"
-#include "Presets/PresetManager.h"
+#include "Core/ConfigStore.h"
+#include "Core/JobWorker.h"
+#include "Core/LibraryDatabase.h"
+#include "Core/PreviewEngine.h"
 
 //==============================================================================
-class PluginTemplateAudioProcessor : public juce::AudioProcessor
+class FoundryAudioProcessor : public juce::AudioProcessor,
+                              public juce::ChangeBroadcaster
 {
 public:
-    PluginTemplateAudioProcessor();
-    ~PluginTemplateAudioProcessor() override;
+    FoundryAudioProcessor();
+    ~FoundryAudioProcessor() override;
 
-    //== AudioProcessor ========================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
@@ -22,11 +23,16 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "PluginTemplate"; }
-    bool acceptsMidi() const override  { return false; }
+    const juce::String getName() const override { return "Foundry"; }
+    bool acceptsMidi() const override  { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+
+    /** Foundry is a generator: it has no input and its output outlives any one
+        block, so report the loaded clip's length. Hosts use the tail to decide
+        how long to keep a silent instrument running - reporting zero is what
+        lets a host cut the loop off mid-playback. */
+    double getTailLengthSeconds() const override;
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -37,28 +43,78 @@ public:
     void getStateInformation (juce::MemoryBlock&) override;
     void setStateInformation (const void*, int) override;
 
-    //== Template-specific ======================================================
     juce::AudioProcessorValueTreeState& getAPVTS() noexcept { return apvts; }
-    pt::PresetManager& getPresetManager() noexcept { return presets; }
+    foundry::ConfigStore&       getConfig()  noexcept { return config; }
+    foundry::LibraryDatabase&   getLibrary() noexcept { return library; }
+    foundry::PreviewEngine&     getPreview() noexcept { return preview; }
+    foundry::JobWorker&         getWorker()  noexcept { return worker; }
+
+    foundry::DrumPattern&       getDrumPattern() noexcept { return drumPattern; }
+    foundry::SampleLock&        getLock (int row) noexcept { return locks[(size_t) juce::jlimit (0, 3, row)]; }
+
+    double getHostBpm() const noexcept { return hostBpm.load(); }
+    double getSampleRate() const noexcept { return currentSr.load(); }
+
+    bool persistConfig (juce::String& error);
+    bool reopenDatabase (juce::String& error);
+
+    bool previewItem (const foundry::LibraryItem& item, juce::String& error);
+    bool previewFile (const juce::File& file, bool loop, juce::String& error);
+
+    /** Arms the most recently generated loop so the transport always has
+        something to play once a batch finishes. */
+    bool loadNewestGenerated (juce::String& error);
+
+    bool getFollowTransport() const noexcept { return followTransport.load(); }
+    void setFollowTransport (bool shouldFollow);
+
+    juce::String startLibraryScan();
+    juce::String startDrumGenerate();
+    juce::String startBassGenerate (int sourceCount, foundry::Variation variation);
+    juce::String startSpliceGenerate (const std::vector<juce::File>& sources,
+                                      const juce::String& parentIds,
+                                      int parentDepth,
+                                      foundry::SliceRes slice,
+                                      foundry::SpliceMode mode,
+                                      foundry::Variation variation,
+                                      int quantity, int bars);
+
+    foundry::Genre getUiGenre() const noexcept { return uiGenre; }
+    void setUiGenre (foundry::Genre g);
+
+    int getUiBars() const noexcept { return uiBars; }
+    void setUiBars (int bars);
+
+    int getUiQuantity() const noexcept { return uiQuantity; }
+    void setUiQuantity (int q);
+
+    bool renderFull = true;
+    bool renderStems = true;
 
 private:
     juce::AudioProcessorValueTreeState apvts;
     pt::ParamPtrs params;
-    pt::PresetManager presets;
 
-    pt::ExampleEffect effect[2];
+    foundry::ConfigStore config;
+    foundry::LibraryDatabase library;
+    foundry::PreviewEngine preview;
+    foundry::JobWorker worker;
 
-    // Every user-facing gain and mix control is smoothed rather than applied
-    // as a raw sample-and-hold read of the parameter - the zipper noise a
-    // knob produces without this is one of the fastest ways an otherwise
-    // fine-sounding plugin reads as unfinished.
-    juce::SmoothedValue<float> smoothedInput, smoothedOutput, smoothedMix, smoothedBypass;
+    foundry::DrumPattern drumPattern;
+    foundry::SampleLock locks[4];
+    foundry::Genre uiGenre = foundry::Genre::Riddim;
+    int uiBars = 2;
+    int uiQuantity = 10;
 
-    // Scratch space for the per-sample ramps below, sized once in
-    // prepareToPlay() rather than allocated inside processBlock().
-    juce::AudioBuffer<float> rampBuffer;
+    std::atomic<double> hostBpm { 0.0 };
+    std::atomic<double> currentSr { 48000.0 };
 
-    double currentSampleRate = 44100.0;
+    std::atomic<bool> followTransport { true };
+    bool transportWasPlaying = false;
+    bool startedByTransport = false;
+    int  heldNotes = 0;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PluginTemplateAudioProcessor)
+    juce::SmoothedValue<float> smoothedPreviewGain;
+
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FoundryAudioProcessor)
 };

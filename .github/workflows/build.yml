@@ -23,17 +23,38 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev \
             libxinerama-dev libxcursor-dev libfreetype6-dev libfontconfig1-dev \
-            libasound2-dev
+            libasound2-dev xvfb
 
       - name: Configure
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DTEMPLATE_BUILD_TESTS=ON
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DFOUNDRY_BUILD_TESTS=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel
 
-      - name: Run tests
+      # find -exec always exits 0, so run the binary directly - otherwise a
+      # failing test is reported as a passing build.
+      - name: Run engine tests
+        shell: bash
+        run: |
+          bin=$(find build \( -iname "FoundryEngineTest" -o -iname "FoundryEngineTest.exe" \) -type f | head -1)
+          test -n "$bin" || { echo "FoundryEngineTest was not built"; exit 1; }
+          "$bin"
+
+      - name: Run playback tests
+        shell: bash
+        run: |
+          bin=$(find build \( -iname "FoundryPlaybackTest" -o -iname "FoundryPlaybackTest.exe" \) -type f | head -1)
+          test -n "$bin" || { echo "FoundryPlaybackTest was not built"; exit 1; }
+          "$bin"
+
+      - name: Run lifecycle tests
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          find build -iname "TemplateDspTest" -type f -perm -u+x -exec {} \; -quit
-          find build -iname "TemplateLifecycleTest" -type f -perm -u+x -exec {} \; -quit
+          bin=$(find build -iname "FoundryLifecycleTest" -type f -perm -u+x | head -1)
+          test -n "$bin" || { echo "FoundryLifecycleTest was not built"; exit 1; }
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a "$bin"
+          else
+            "$bin"
+          fi
