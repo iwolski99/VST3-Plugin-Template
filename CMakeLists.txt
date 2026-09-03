@@ -78,16 +78,16 @@ juce_add_plugin(Foundry
     PLUGIN_CODE                 Fndr
     FORMATS                     VST3 Standalone
     PRODUCT_NAME                "Foundry"
-    DESCRIPTION                 "Loop generation and sample workflow for Riddim and Dubstep"
-    IS_SYNTH                    FALSE
-    NEEDS_MIDI_INPUT            FALSE
+    DESCRIPTION                 "Loop generation and playback for Riddim and Dubstep"
+    IS_SYNTH                    TRUE
+    NEEDS_MIDI_INPUT            TRUE
     NEEDS_MIDI_OUTPUT           FALSE
     IS_MIDI_EFFECT              FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
     COPY_PLUGIN_AFTER_BUILD     TRUE
     NEEDS_CURL                  FALSE
     NEEDS_WEB_BROWSER           FALSE
-    VST3_CATEGORIES             Fx
+    VST3_CATEGORIES             Instrument Sampler
     VST3_AUTO_MANIFEST          TRUE)
 
 set(FOUNDRY_SOURCES
@@ -192,6 +192,27 @@ if(FOUNDRY_BUILD_TESTS)
         PUBLIC
         juce::juce_recommended_config_flags)
 
+    juce_add_console_app(FoundryPlaybackTest PRODUCT_NAME "FoundryPlaybackTest")
+    target_sources(FoundryPlaybackTest PRIVATE Tests/PlaybackTest.cpp ${FOUNDRY_SOURCES})
+    target_include_directories(FoundryPlaybackTest PRIVATE Source)
+    target_compile_definitions(FoundryPlaybackTest PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_STANDALONE_APPLICATION=1
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_REPORT_APP_USAGE=0
+        JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(FoundryPlaybackTest PRIVATE
+        FoundryAssets
+        foundry_sqlite
+        juce::juce_audio_utils
+        juce::juce_audio_formats
+        juce::juce_audio_processors
+        juce::juce_gui_basics
+        juce::juce_gui_extra
+        PUBLIC
+        juce::juce_recommended_config_flags)
+
     juce_add_console_app(FoundryLifecycleTest PRODUCT_NAME "FoundryLifecycleTest")
     target_sources(FoundryLifecycleTest PRIVATE Tests/LifecycleTest.cpp ${FOUNDRY_SOURCES})
     target_include_directories(FoundryLifecycleTest PRIVATE Source)
@@ -214,7 +235,7 @@ if(FOUNDRY_BUILD_TESTS)
         juce::juce_recommended_config_flags)
 
     if(FOUNDRY_SANITIZE AND NOT MSVC)
-        foreach(t FoundryEngineTest FoundryLifecycleTest)
+        foreach(t FoundryEngineTest FoundryPlaybackTest FoundryLifecycleTest)
             target_compile_options(${t} PRIVATE
                 -fsanitize=address,undefined -fno-omit-frame-pointer -g)
             target_link_options(${t} PRIVATE -fsanitize=address,undefined)

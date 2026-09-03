@@ -8,6 +8,11 @@ namespace foundry
 class AudioIO
 {
 public:
+    /** Fade applied to the head of a one-shot placed on the grid: enough to
+        kill a DC step, short enough to leave the transient intact. Crossfaded
+        slices in the splicer want a much longer fade and pass their own. */
+    static constexpr int kOneShotFadeInSamples = 8;
+
     AudioIO();
 
     bool loadWav (const juce::File& file, juce::AudioBuffer<float>& buffer,

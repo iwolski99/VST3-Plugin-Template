@@ -24,10 +24,15 @@ public:
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "Foundry"; }
-    bool acceptsMidi() const override  { return false; }
+    bool acceptsMidi() const override  { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
-    double getTailLengthSeconds() const override { return 0.0; }
+
+    /** Foundry is a generator: it has no input and its output outlives any one
+        block, so report the loaded clip's length. Hosts use the tail to decide
+        how long to keep a silent instrument running - reporting zero is what
+        lets a host cut the loop off mid-playback. */
+    double getTailLengthSeconds() const override;
 
     int getNumPrograms() override { return 1; }
     int getCurrentProgram() override { return 0; }
@@ -55,6 +60,13 @@ public:
 
     bool previewItem (const foundry::LibraryItem& item, juce::String& error);
     bool previewFile (const juce::File& file, bool loop, juce::String& error);
+
+    /** Arms the most recently generated loop so the transport always has
+        something to play once a batch finishes. */
+    bool loadNewestGenerated (juce::String& error);
+
+    bool getFollowTransport() const noexcept { return followTransport.load(); }
+    void setFollowTransport (bool shouldFollow);
 
     juce::String startLibraryScan();
     juce::String startDrumGenerate();
@@ -96,6 +108,11 @@ private:
 
     std::atomic<double> hostBpm { 0.0 };
     std::atomic<double> currentSr { 48000.0 };
+
+    std::atomic<bool> followTransport { true };
+    bool transportWasPlaying = false;
+    bool startedByTransport = false;
+    int  heldNotes = 0;
 
     juce::SmoothedValue<float> smoothedPreviewGain;
 

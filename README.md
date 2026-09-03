@@ -1,14 +1,20 @@
 # Foundry
 
-A local VST3 loop-generation and sample-workflow plugin for Riddim and Dubstep.
-Foundry indexes your own one-shots, generates drum loops and bass riffs from them,
-recombines those riffs in the Riff Splicer, and lets you audition and drag the
-results straight into a DAW.
+A local VST3 **instrument** for Riddim and Dubstep loop generation. Foundry
+indexes your own one-shots, generates drum loops and bass riffs from them,
+recombines those riffs in the Riff Splicer, and plays the results back on the
+spot - from the PLAY button, from the host transport, or from a MIDI note.
+
+Because it is an instrument, load Foundry on an **instrument / generator**
+track, not an effect slot. That also keeps hosts from suspending it: an effect
+on a track with no incoming audio gets put to sleep by FL Studio's smart
+disable and by Ableton's device-chain sleep, which is exactly the state in
+which a sample player appears to do nothing when you press play.
 
 No cloud. No subscription. Your sounds in. Ideas out.
 
-This lives on the `cursor/foundry-vst-1f99` branch of the VST3 plugin template
-repository so the original template on `main` stays untouched.
+This lives on a feature branch of the VST3 plugin template repository so the
+original template on `main` stays untouched.
 
 ## Clone and build (Windows)
 
@@ -16,7 +22,7 @@ You need **CMake 3.22+**, **Visual Studio 2022** (Desktop C++ workload), and
 an internet connection on the first configure so JUCE can be downloaded.
 
 ```bat
-git clone -b cursor/foundry-vst-1f99 --single-branch https://github.com/iwolski99/VST3-Plugin-Template.git Foundry
+git clone -b claude/foundry-vst-bugs-pll8g9 --single-branch https://github.com/iwolski99/VST3-Plugin-Template.git Foundry
 cd Foundry
 build_windows.bat
 ```
@@ -47,7 +53,7 @@ cmake --build build --config Release --target Foundry_VST3
 ## macOS / Linux
 
 ```bash
-git clone -b cursor/foundry-vst-1f99 --single-branch https://github.com/iwolski99/VST3-Plugin-Template.git Foundry
+git clone -b claude/foundry-vst-bugs-pll8g9 --single-branch https://github.com/iwolski99/VST3-Plugin-Template.git Foundry
 cd Foundry
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target Foundry_VST3 -j
@@ -76,19 +82,46 @@ auditioning without a DAW.
 3. Click **Create Recommended Structure** (or map your existing Kick / Clap / Hat / Ride / Bass folders).
 4. Drop WAV one-shots into those folders.
 5. **Refresh Library**.
-6. Generate drums or bass, audition from the Library tab, drag into the DAW.
+6. Generate drums or bass, then press **PLAY**, hit the host transport, or send
+   Foundry a note.
 
 Generated files are ordinary 24-bit WAV files on disk. Drag-and-drop from the
 library list works in hosts that accept external file drags (including FL Studio).
+
+## Playing loops
+
+Foundry plays one loop at a time - whichever is currently loaded.
+
+- **Clicking a row** in the Library browser loads that file and starts it.
+- **PLAY** restarts the loaded loop from the top; **STOP** ends it. Finishing a
+  generation batch arms its newest loop, so PLAY always has something to play.
+- **SYNC** (on by default) starts and stops with the host transport and folds
+  the loop into the timeline, so it stays locked to the bar wherever playback
+  begins.
+- **Any MIDI note** triggers the loop from the top and releasing it stops the
+  loop. The note is a trigger only: Foundry plays finished loops, so the pitch
+  you press never transposes the sample. Whichever key you hit in the piano
+  roll, the loop plays back exactly as rendered.
+
+The loaded loop and the SYNC setting are saved with the session.
 
 ## Tests
 
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Release -DFOUNDRY_BUILD_TESTS=ON
-cmake --build build --config Release --target FoundryEngineTest FoundryLifecycleTest
+cmake --build build --config Release --target FoundryEngineTest FoundryPlaybackTest FoundryLifecycleTest
 ```
+
+- `FoundryEngineTest` - offline generation, database and rendering.
+- `FoundryPlaybackTest` - drives the processor the way a host does and checks
+  that audio actually comes out of every trigger path.
+- `FoundryLifecycleTest` - repeated construct / run / destroy cycles.
+
+Add `-DFOUNDRY_SANITIZE=ON` to build the tests with AddressSanitizer and UBSan.
 
 ## Format
 
-64-bit VST3. WAV sources and 24-bit WAV output. Host sample rate by default
-(44.1 / 48 kHz overrides in Settings). All rendering happens off the audio thread.
+64-bit VST3 instrument (`Instrument|Sampler`), MIDI in, stereo out, no audio
+input. WAV sources and 24-bit WAV output. Host sample rate by default
+(44.1 / 48 kHz overrides in Settings). All rendering happens off the audio
+thread, and the loaded clip is re-decoded if the host changes sample rate.

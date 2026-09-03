@@ -21,6 +21,17 @@ public:
     void requestCancel() { status.cancelRequested.store (true); }
 
     Kind currentKind() const noexcept { return kind.load(); }
+
+    /** The kind of the job that finished most recently. */
+    Kind lastKind() const noexcept { return finishedKind.load(); }
+
+    /** True when the last finished job rendered new loops into the library. */
+    bool lastJobGenerated() const noexcept
+    {
+        const auto k = finishedKind.load();
+        return k == Kind::Drums || k == Kind::Bass || k == Kind::Splice;
+    }
+
     int  progressDone() const noexcept { return status.done.load(); }
     int  progressTotal() const noexcept { return juce::jmax (1, status.total.load()); }
 
@@ -52,6 +63,7 @@ private:
 
     Status status;
     std::atomic<Kind> kind { Kind::Idle };
+    std::atomic<Kind> finishedKind { Kind::Idle };
     std::atomic<bool> lastOk { true };
 
     ConfigStore* config = nullptr;

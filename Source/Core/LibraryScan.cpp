@@ -102,8 +102,12 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
                                                                         : config.folder (role));
 
         LibraryItem it;
+        bool alreadyIndexed = false;
         if (auto existing = db.findByPath (f.getFullPathName()))
+        {
             it = *existing;
+            alreadyIndexed = true;
+        }
 
         it.filename = f.getFileName();
         it.path = f.getFullPathName();
@@ -124,10 +128,10 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
         }
 
         seen.insert (it.path);
-        if (it.id == 0)
-            ++out.added;
-        else
+        if (alreadyIndexed)
             ++out.kept;
+        else
+            ++out.added;
 
         if (progress && (i % 25 == 0 || i + 1 == total))
             progress (i + 1, juce::jmax (1, total), "Refreshing library");

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "KnobComponent.h"
-#include "../Core/PreviewEngine.h"
+#include "../PluginProcessor.h"
 
 namespace pt
 {
@@ -12,7 +12,7 @@ class FooterBar : public juce::Component,
                   private juce::Timer
 {
 public:
-    FooterBar (juce::AudioProcessorValueTreeState& state, foundry::PreviewEngine& preview);
+    FooterBar (FoundryAudioProcessor& processor);
     ~FooterBar() override;
 
     std::function<void (int)> onZoomChanged;
@@ -29,10 +29,12 @@ public:
 private:
     void timerCallback() override;
 
+    FoundryAudioProcessor& processor;
     foundry::PreviewEngine& preview;
 
     juce::TextButton playButton { "PLAY" };
     juce::TextButton stopButton { "STOP" };
+    juce::TextButton syncButton { "SYNC" };
     Knob volumeKnob;
     juce::ComboBox zoomBox;
 

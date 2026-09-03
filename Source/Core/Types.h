@@ -123,6 +123,7 @@ struct AppConfig
     juce::String sampleRateMode = "host"; // host | 44100 | 48000
     int       bitDepth         = 24;
     bool      renderProtection = true;
+    bool      followTransport  = true;
     int       uiZoom           = 100;
     int       lastTab          = 0;
     juce::String savedDrumPatternJson;

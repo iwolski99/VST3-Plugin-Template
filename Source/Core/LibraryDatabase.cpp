@@ -100,9 +100,11 @@ bool LibraryDatabase::open (const juce::File& file, juce::String& error)
     if (! file.getParentDirectory().isDirectory())
         file.getParentDirectory().createDirectory();
 
-    const auto utf8 = file.getFullPathName().toRawUTF8();
+    // Keep the string alive: toRawUTF8() points into it, and calling it on the
+    // temporary returned by getFullPathName() hands sqlite a dangling pointer.
+    const auto path = file.getFullPathName();
     const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX;
-    const int rc = sqlite3_open_v2 (utf8, &db, flags, nullptr);
+    const int rc = sqlite3_open_v2 (path.toRawUTF8(), &db, flags, nullptr);
 
     if (rc != SQLITE_OK)
     {

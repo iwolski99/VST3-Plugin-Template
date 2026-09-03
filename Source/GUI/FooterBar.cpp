@@ -9,25 +9,40 @@ const juce::Array<int>& FooterBar::zoomOptions()
     return options;
 }
 
-FooterBar::FooterBar (juce::AudioProcessorValueTreeState& state, foundry::PreviewEngine& p)
-    : preview (p),
-      volumeKnob (state, pid::previewVolume, "VOL", 0.78f),
+FooterBar::FooterBar (FoundryAudioProcessor& p)
+    : processor (p),
+      preview (p.getPreview()),
+      volumeKnob (p.getAPVTS(), pid::previewVolume, "VOL", 0.78f),
       theme (getTheme())
 {
     addAndMakeVisible (playButton);
     addAndMakeVisible (stopButton);
+    addAndMakeVisible (syncButton);
     addAndMakeVisible (volumeKnob);
     addAndMakeVisible (zoomBox);
 
     playButton.setClickingTogglesState (false);
     stopButton.setClickingTogglesState (false);
-    playButton.setTooltip ("Play / retrigger the selected sample");
-    stopButton.setTooltip ("Stop preview");
+    playButton.setTooltip ("Play the loaded loop from the top");
+    stopButton.setTooltip ("Stop playback");
+
+    syncButton.setClickingTogglesState (true);
+    syncButton.setToggleState (processor.getFollowTransport(), juce::dontSendNotification);
+    syncButton.setTooltip ("Start and stop with the host transport, locked to the bar");
+    syncButton.onClick = [this] { processor.setFollowTransport (syncButton.getToggleState()); };
 
     playButton.onClick = [this]
     {
-        if (preview.currentFile().existsAsFile())
-            preview.retrigger();
+        // Gate on a decoded clip, not on the file: a loop stays playable once
+        // loaded, and a generated batch arms itself so PLAY is never a dead end.
+        if (! preview.hasClip())
+        {
+            juce::String err;
+            if (! processor.loadNewestGenerated (err))
+                return;
+        }
+
+        preview.retrigger();
     };
     stopButton.onClick = [this] { preview.stop(); };
 
@@ -57,6 +72,8 @@ void FooterBar::setTheme (const Theme& t)
     playButton.setColour (juce::TextButton::buttonColourId, t.accent);
     playButton.setColour (juce::TextButton::buttonOnColourId, t.accent);
     stopButton.setColour (juce::TextButton::buttonColourId, t.accentAlt);
+    syncButton.setColour (juce::TextButton::buttonColourId, t.accentAlt);
+    syncButton.setColour (juce::TextButton::buttonOnColourId, t.accent);
     zoomBox.setColour (juce::ComboBox::textColourId, t.text);
     zoomBox.setColour (juce::ComboBox::arrowColourId, t.accent);
     zoomBox.setColour (juce::ComboBox::outlineColourId, t.panelEdge);
@@ -79,16 +96,19 @@ void FooterBar::timerCallback()
 {
     preview.copyPeaks (peaks, 96);
     playButton.setToggleState (preview.isPlaying(), juce::dontSendNotification);
-    repaint (200, 0, getWidth() - 340, getHeight());
+    syncButton.setToggleState (processor.getFollowTransport(), juce::dontSendNotification);
+    repaint (juce::Rectangle<int> (150, 0, juce::jmax (0, getWidth() - 330), getHeight()));
 }
 
 void FooterBar::resized()
 {
     auto b = getLocalBounds().reduced (14, 8);
 
-    playButton.setBounds (b.removeFromLeft (64).withHeight (28).withY (b.getY() + 22));
-    b.removeFromLeft (6);
-    stopButton.setBounds (b.removeFromLeft (64).withHeight (28).withY (b.getY() + 22));
+    playButton.setBounds (b.removeFromLeft (60).withHeight (28).withY (b.getY() + 22));
+    b.removeFromLeft (5);
+    stopButton.setBounds (b.removeFromLeft (60).withHeight (28).withY (b.getY() + 22));
+    b.removeFromLeft (5);
+    syncButton.setBounds (b.removeFromLeft (56).withHeight (28).withY (b.getY() + 22));
 
     auto zoomArea = b.removeFromRight (88);
     zoomArea.removeFromTop (18);
@@ -127,11 +147,12 @@ void FooterBar::paint (juce::Graphics& g)
     g.drawText ("ZOOM", getWidth() - 92, 8, 80, 12, juce::Justification::centredLeft);
 
     const auto name = preview.currentName();
-    auto wave = juce::Rectangle<float> (160.0f, 18.0f, (float) getWidth() - 160.0f - 180.0f, 52.0f);
+    auto wave = juce::Rectangle<float> (210.0f, 18.0f,
+                                        juce::jmax (40.0f, (float) getWidth() - 210.0f - 180.0f), 52.0f);
 
     g.setColour (theme.text.withAlpha (name.isEmpty() ? 0.35f : 0.92f));
     g.setFont (FoundryLookAndFeel::labelFont (12.0f, false, 0.02f));
-    g.drawText (name.isEmpty() ? "Nothing loaded — click a file to audition"
+    g.drawText (name.isEmpty() ? "Nothing loaded — click a loop in the browser, or generate a batch"
                                : name,
                 wave.removeFromTop (16.0f).toNearestInt(),
                 juce::Justification::centredLeft, true);

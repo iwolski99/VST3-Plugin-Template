@@ -398,7 +398,8 @@ GenerateOutcome generateDrumBatch (const DrumRequest& req,
                     continue;
 
                 const int pos = AudioIO::beatsToSamples ((double) s * stepBeats, req.bpm, req.sampleRate);
-                AudioIO::mixAt (stems[r], samples[r], pos, 1.0f, fade, 0);
+                AudioIO::mixAt (stems[r], samples[r], pos, 1.0f,
+                                AudioIO::kOneShotFadeInSamples, 0);
             }
 
             AudioIO::fadeLoopEnds (stems[r], fade);
@@ -540,7 +541,8 @@ GenerateOutcome generateBassBatch (const BassRequest& req,
             if (h.source < 0 || h.source >= used)
                 continue;
             const int pos = AudioIO::beatsToSamples ((double) h.step * stepBeats, req.bpm, req.sampleRate);
-            AudioIO::mixAt (full, shots[(size_t) h.source], pos, 1.0f, fade, 0);
+            AudioIO::mixAt (full, shots[(size_t) h.source], pos, 1.0f,
+                            AudioIO::kOneShotFadeInSamples, 0);
         }
 
         AudioIO::fadeLoopEnds (full, fade);

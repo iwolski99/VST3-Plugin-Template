@@ -21,7 +21,7 @@ FoundryAudioProcessorEditor::FoundryAudioProcessorEditor (FoundryAudioProcessor&
       bassPanel (p),
       splicerPanel (p),
       settingsPanel (p),
-      footer (p.getAPVTS(), p.getPreview()),
+      footer (p),
       overlay (p.getWorker())
 {
     setLookAndFeel (&lookAndFeel);
@@ -147,6 +147,16 @@ void FoundryAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaste
     {
         const auto msg = w.lastMessage();
         const bool err = ! w.lastSucceeded();
+
+        // A finished batch arms its newest loop, so PLAY has something to play
+        // the moment the progress bar disappears. A library refresh leaves the
+        // loaded loop alone, and neither ever interrupts something sounding.
+        if (! err && w.lastJobGenerated() && ! processor.getPreview().isPlaying())
+        {
+            juce::String loadErr;
+            processor.loadNewestGenerated (loadErr);
+        }
+
         banner.setMessage (msg, err, err && (msg.containsIgnoreCase ("folder") || msg.containsIgnoreCase ("sample")
                                              || msg.containsIgnoreCase ("Settings")));
         resized();

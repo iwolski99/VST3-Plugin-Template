@@ -201,6 +201,9 @@ bool ConfigStore::load (const juce::File& file, juce::String& error)
     config.renderProtection = obj->getProperty ("renderProtection");
     if (! obj->hasProperty ("renderProtection"))
         config.renderProtection = true;
+    config.followTransport = obj->getProperty ("followTransport");
+    if (! obj->hasProperty ("followTransport"))
+        config.followTransport = true;
     config.uiZoom = juce::jlimit (50, 200, (int) obj->getProperty ("uiZoom"));
     if (config.uiZoom == 0)
         config.uiZoom = 100;
@@ -247,6 +250,7 @@ bool ConfigStore::save (const juce::File& file, juce::String& error) const
     obj->setProperty ("sampleRateMode", config.sampleRateMode);
     obj->setProperty ("bitDepth", 24);
     obj->setProperty ("renderProtection", config.renderProtection);
+    obj->setProperty ("followTransport", config.followTransport);
     obj->setProperty ("uiZoom", config.uiZoom);
     obj->setProperty ("lastTab", config.lastTab);
     obj->setProperty ("savedDrumPattern", config.savedDrumPatternJson);

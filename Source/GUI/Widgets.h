@@ -92,11 +92,20 @@ public:
 
     void setMessage (juce::String m, bool error, bool settings)
     {
+        const bool wasVisible = isVisible();
+
         text = std::move (m);
         isError = error;
         showSettings = settings;
         settingsButton.setVisible (showSettings && text.isNotEmpty());
         setVisible (text.isNotEmpty());
+
+        // Panels lay the banner out only when it is visible, so a bare
+        // setVisible leaves it at zero size and the message never appears.
+        if (isVisible() != wasVisible)
+            if (auto* parent = getParentComponent())
+                parent->resized();
+
         repaint();
     }
 

@@ -209,9 +209,11 @@ int main()
     expect (preview.loadAndPlay (kickDir.getChildFile ("Kick_A.wav"), false, err), "preview load: " + err);
     juce::AudioBuffer<float> block (2, 512);
     block.clear();
-    preview.mixInto (block);
+    preview.render (block);
     expect (isFiniteBuffer (block), "preview finite");
     expect (block.getMagnitude (0, 0, 512) > 0.0f, "preview audible");
+    expect (preview.hasClip(), "preview reports a loaded clip");
+    expect (preview.clipLengthSamples() > 0, "preview knows the clip length");
     preview.stop();
 
     // config round-trip

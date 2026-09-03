@@ -58,8 +58,13 @@ juce::AudioBuffer<float> AudioIO::resample (const juce::AudioBuffer<float>& src,
     if (srcRate <= 0.0 || dstRate <= 0.0 || std::abs (srcRate - dstRate) < 0.5)
         return src;
 
-    const double ratio = dstRate / srcRate;
-    const int outN = juce::jmax (1, juce::roundToInt ((double) src.getNumSamples() * ratio));
+    const double speed = srcRate / dstRate;
+    const int srcN = src.getNumSamples();
+
+    // process() consumes ceil(outN * speed) input samples. Round the output
+    // length *down* against that so the interpolator never reads past the end
+    // of the source buffer.
+    const int outN = juce::jmax (1, (int) std::floor ((double) srcN / speed));
     juce::AudioBuffer<float> out (src.getNumChannels(), outN);
     out.clear();
 
@@ -68,7 +73,7 @@ juce::AudioBuffer<float> AudioIO::resample (const juce::AudioBuffer<float>& src,
     for (int ch = 0; ch < src.getNumChannels(); ++ch)
     {
         interpolator.reset();
-        interpolator.process (srcRate / dstRate,
+        interpolator.process (speed,
                               src.getReadPointer (ch),
                               out.getWritePointer (ch),
                               outN);
@@ -225,7 +230,12 @@ void AudioIO::mixAt (juce::AudioBuffer<float>& dest,
             const int fromEnd = n - 1 - i;
             int outFade = fadeOut;
             if (truncated)
-                outFade = juce::jmax (outFade, juce::jmin (n / 4, fadeIn > 0 ? fadeIn : 32));
+            {
+                // The source was cut off by the end of the destination, so it
+                // needs its own release regardless of how short the head fade
+                // was - a truncated hit otherwise ends on a step.
+                outFade = juce::jmax (outFade, juce::jmin (n / 4, 64));
+            }
 
             if (outFade > 0 && fromEnd < outFade)
             {

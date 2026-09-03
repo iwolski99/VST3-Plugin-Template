@@ -196,6 +196,7 @@ void JobWorker::run()
 
     lastOk.store (ok);
     setText (ok ? "Done" : "Failed", err);
+    finishedKind.store (k);
     status.running.store (false);
     kind.store (Kind::Idle);
     sendChangeMessage();

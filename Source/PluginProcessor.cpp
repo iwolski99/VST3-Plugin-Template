@@ -5,7 +5,6 @@
 //==============================================================================
 FoundryAudioProcessor::FoundryAudioProcessor()
     : AudioProcessor (BusesProperties()
-                           .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                            .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "PARAMETERS", pt::createParameterLayout())
 {
@@ -25,8 +24,11 @@ FoundryAudioProcessor::FoundryAudioProcessor()
     else
         drumPattern = foundry::defaultDrumPattern (uiGenre, uiBars);
 
-    if (auto* p = apvts.getParameter (pt::pid::previewVolume))
-        p->setValueNotifyingHost (p->convertTo0to1 (config.get().previewVolume * 100.0f));
+    // Seed the player from the stored preference. Calling setValueNotifyingHost
+    // from a constructor pushes a parameter change at a host that has not
+    // finished instantiating us yet, which some hosts do not survive.
+    preview.setVolume (juce::jlimit (0.0f, 1.0f, config.get().previewVolume));
+    followTransport.store (config.get().followTransport);
 
     reopenDatabase (err);
 }
@@ -90,6 +92,47 @@ bool FoundryAudioProcessor::previewItem (const foundry::LibraryItem& item, juce:
 bool FoundryAudioProcessor::previewFile (const juce::File& file, bool loop, juce::String& error)
 {
     return preview.loadAndPlay (file, loop, error);
+}
+
+bool FoundryAudioProcessor::loadNewestGenerated (juce::String& error)
+{
+    const foundry::Category cats[] = { foundry::drumLoopCategory (uiGenre),
+                                       foundry::Category::BassLoopsSpliced,
+                                       foundry::Category::BassLoopsBase };
+
+    foundry::LibraryItem newest;
+    bool found = false;
+
+    for (auto cat : cats)
+    {
+        for (const auto& it : library.query (cat, {}, foundry::SortMode::Newest, false))
+        {
+            if (! juce::File (it.path).existsAsFile())
+                continue;
+
+            if (! found || it.dateCreated > newest.dateCreated)
+            {
+                newest = it;
+                found = true;
+            }
+            break; // the query is already newest-first
+        }
+    }
+
+    if (! found)
+    {
+        error = "No generated loops in the library yet.";
+        return false;
+    }
+
+    // Arm it without starting: the user decides when to hit PLAY.
+    return preview.load (juce::File (newest.path), true, error);
+}
+
+void FoundryAudioProcessor::setFollowTransport (bool shouldFollow)
+{
+    followTransport.store (shouldFollow);
+    config.get().followTransport = shouldFollow;
 }
 
 juce::String FoundryAudioProcessor::startLibraryScan()
@@ -198,21 +241,30 @@ bool FoundryAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) 
 {
     const auto mono = juce::AudioChannelSet::mono();
     const auto stereo = juce::AudioChannelSet::stereo();
-    const auto in = layouts.getMainInputChannelSet();
     const auto out = layouts.getMainOutputChannelSet();
 
     if (out != mono && out != stereo)
         return false;
 
-    if (in != juce::AudioChannelSet::disabled() && in != out)
-        return false;
+    // A generator takes no audio in; refuse any layout that hands us one.
+    return layouts.getMainInputChannelSet() == juce::AudioChannelSet::disabled();
+}
 
-    return true;
+double FoundryAudioProcessor::getTailLengthSeconds() const
+{
+    return preview.clipLengthSeconds();
 }
 
 void FoundryAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSr.store (sampleRate);
+
+    // Note and transport tracking do not survive a stop/start, otherwise a
+    // note-on the host never matched with a note-off leaves the voice stuck.
+    heldNotes = 0;
+    transportWasPlaying = false;
+    startedByTransport = false;
+
     preview.prepare (sampleRate, samplesPerBlock);
     smoothedPreviewGain.reset (sampleRate, 0.02);
     const float v = params.previewVolume != nullptr ? params.previewVolume->load() * 0.01f : 0.8f;
@@ -225,15 +277,19 @@ void FoundryAudioProcessor::releaseResources()
     preview.reset();
 }
 
-void FoundryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&)
+void FoundryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
 {
     juce::ScopedNoDenormals noDenormals;
 
-    const int numChannels = buffer.getNumChannels();
-    const int numSamples  = buffer.getNumSamples();
+    const int numSamples = buffer.getNumSamples();
 
-    for (int i = getTotalNumInputChannels(); i < numChannels; ++i)
-        buffer.clear (i, 0, numSamples);
+    // Nothing feeds us, so start from silence every block rather than passing
+    // through whatever the host left in the buffer.
+    buffer.clear();
+
+    bool transportPlaying = false;
+    double ppq = 0.0;
+    bool havePpq = false;
 
     if (auto* ph = getPlayHead())
     {
@@ -241,8 +297,65 @@ void FoundryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         {
             if (auto bpm = pos->getBpm())
                 hostBpm.store (*bpm);
+
+            transportPlaying = pos->getIsPlaying();
+
+            if (auto p = pos->getPpqPosition())
+            {
+                ppq = *p;
+                havePpq = true;
+            }
         }
     }
+
+    // Any note plays the loaded loop at its recorded pitch - Foundry plays
+    // finished loops, so the note chosen in the piano roll only says when to
+    // start, never how to transpose.
+    for (const auto meta : midi)
+    {
+        const auto m = meta.getMessage();
+
+        if (m.isNoteOn())
+        {
+            ++heldNotes;
+            startedByTransport = false;
+            preview.retrigger();
+        }
+        else if (m.isNoteOff())
+        {
+            heldNotes = juce::jmax (0, heldNotes - 1);
+            if (heldNotes == 0 && ! startedByTransport)
+                preview.stop();
+        }
+        else if (m.isAllNotesOff() || m.isAllSoundOff())
+        {
+            heldNotes = 0;
+            if (! startedByTransport)
+                preview.stop();
+        }
+    }
+
+    if (followTransport.load())
+    {
+        if (transportPlaying && ! transportWasPlaying)
+        {
+            if (havePpq)
+                preview.alignToHost (ppq, hostBpm.load());
+
+            if (heldNotes == 0 && preview.hasClip())
+            {
+                startedByTransport = true;
+                preview.play();
+            }
+        }
+        else if (! transportPlaying && transportWasPlaying && startedByTransport)
+        {
+            startedByTransport = false;
+            preview.stop();
+        }
+    }
+
+    transportWasPlaying = transportPlaying;
 
     if (params.previewVolume != nullptr)
     {
@@ -250,12 +363,12 @@ void FoundryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         smoothedPreviewGain.setTargetValue (v);
         preview.setVolume (smoothedPreviewGain.getNextValue());
         // Advance the rest of the block so the smoother stays in time even
-        // though preview applies a per-block gain (volume isn't sample-accurate).
+        // though the player applies a per-block gain (volume isn't sample-accurate).
         for (int i = 1; i < numSamples; ++i)
             smoothedPreviewGain.getNextValue();
     }
 
-    preview.mixInto (buffer);
+    preview.render (buffer);
 }
 
 //==============================================================================
@@ -269,6 +382,9 @@ void FoundryAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     state.setProperty ("renderStems", renderStems, nullptr);
     state.setProperty ("drumPattern", drumPattern.toJson(), nullptr);
     state.setProperty ("lastTab", config.get().lastTab, nullptr);
+    state.setProperty ("followTransport", followTransport.load(), nullptr);
+    state.setProperty ("loadedLoop", preview.currentFile().getFullPathName(), nullptr);
+    state.setProperty ("loadedLoopLoops", preview.currentIsLoop(), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -292,6 +408,24 @@ void FoundryAudioProcessor::setStateInformation (const void* data, int sizeInByt
         const auto json = state.getProperty ("drumPattern").toString();
         if (json.isNotEmpty())
             drumPattern = foundry::DrumPattern::fromJson (json, uiBars);
+
+        setFollowTransport ((bool) state.getProperty ("followTransport", followTransport.load()));
+
+        // Re-arm the loop the session was saved with, stopped: reopening a
+        // project should leave PLAY ready rather than empty.
+        const auto loopPath = state.getProperty ("loadedLoop").toString();
+        if (loopPath.isNotEmpty())
+        {
+            const juce::File f (loopPath);
+            if (f.existsAsFile())
+            {
+                juce::String err;
+                preview.load (f, (bool) state.getProperty ("loadedLoopLoops", true), err);
+            }
+        }
+
+        // An editor may already be open on this instance.
+        sendChangeMessage();
     }
 }
 
