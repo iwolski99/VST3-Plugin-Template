@@ -205,11 +205,19 @@ shows the first errors. Everything is saved in the `build-logs` folder:
 Options: `build_windows.bat clean` rebuilds from scratch, `noinstall` only
 builds, `nopause` doesn't wait for a key at the end.
 
-**Don't want to build at all?** Every push to GitHub is built by GitHub
-Actions with this same script: open the repo's **Actions** tab, pick the
-latest *Build* run, and download **Foundry-VST3-Windows** under *Artifacts*.
-Unzip it and copy the `Foundry.vst3` folder into
-`C:\Program Files\Common Files\VST3`.
+**Easiest: let GitHub build it.** Every push is built on GitHub's own
+Windows machine, which already has a complete Visual Studio. Nothing needs
+to be set up on your PC, and it's free on a public repository.
+
+1. Open the repo on GitHub → **Actions** tab → **Build Windows VST3**.
+2. Open the newest run with a green **Foundry.vst3** job. (**Run workflow**
+   starts one by hand.)
+3. Under **Artifacts**, download **Foundry-VST3-Windows-x64** and unzip it.
+4. Copy the `Foundry.vst3` folder inside into
+   `C:\Program Files\Common Files\VST3`, then rescan plugins in FL Studio.
+
+The first build takes 10–25 minutes (it compiles JUCE). Tests run as a
+separate job: if only **Tests** is red, the plugin download is still fine.
 
 ### Manual Windows build
 

@@ -1,0 +1,64 @@
+name: Build Windows VST3
+
+# Builds Foundry.vst3 on GitHub's Windows machine (a complete Visual Studio is
+# already installed there) and publishes it as a downloadable zip.
+# Free and unlimited on a public repository.
+
+on:
+  push:
+  workflow_dispatch: {}
+
+# A newer push cancels a run of the same branch that's still going.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  vst3:
+    name: Foundry.vst3
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # No -G: CMake picks whichever Visual Studio GitHub has installed, so a
+      # runner update can't break the build.
+      - name: Configure
+        run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build VST3
+        run: cmake --build build --config Release --target Foundry_VST3 --parallel
+
+      # Put the plugin inside a real Foundry.vst3 folder, so the downloaded zip
+      # can be copied straight into C:\Program Files\Common Files\VST3.
+      - name: Stage
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist\vst3 | Out-Null
+          Copy-Item -Recurse -Force "build\Foundry_artefacts\Release\VST3\Foundry.vst3" "dist\vst3\Foundry.vst3"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Foundry-VST3-Windows-x64
+          path: dist/vst3
+
+  # Separate job: a failing test turns this job red, never the plugin build,
+  # and the plugin download is there either way.
+  tests:
+    name: Tests
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -A x64 -DCMAKE_BUILD_TYPE=Release -DFOUNDRY_BUILD_TESTS=ON
+
+      - name: Build tests
+        run: cmake --build build --config Release --target FoundryEngineTest FoundryPlaybackTest --parallel
+
+      - name: Engine tests
+        run: build\FoundryEngineTest_artefacts\Release\FoundryEngineTest.exe
+
+      - name: Playback tests
+        run: build\FoundryPlaybackTest_artefacts\Release\FoundryPlaybackTest.exe

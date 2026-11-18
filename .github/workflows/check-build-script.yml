@@ -1,0 +1,60 @@
+name: Check build_windows.bat
+
+# Runs the one-click script exactly as a user would, then breaks things on
+# purpose to make sure failures are explained. Start it by hand from the
+# Actions tab ("Run workflow") after changing build_windows.bat.
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  script:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run build_windows.bat
+        shell: cmd
+        run: build_windows.bat nopause
+
+      - name: Check the plugin was installed
+        shell: cmd
+        run: if not exist "%CommonProgramFiles%\VST3\Foundry.vst3\Contents\x86_64-win\Foundry.vst3" (echo Foundry.vst3 not installed & exit /b 1)
+
+      - name: Failure check - inject a compile error
+        shell: bash
+        run: echo 'this is deliberately not C++;' >> Source/Core/RiffTypes.cpp
+
+      - name: Failure check - script must fail and explain why
+        shell: cmd
+        run: |
+          call build_windows.bat nopause noinstall > failure-output.txt 2>&1
+          if not errorlevel 1 (type failure-output.txt & echo The script did not report the failure. & exit /b 1)
+          type failure-output.txt
+          findstr /c:"BUILD FAILED" failure-output.txt >nul || (echo Missing BUILD FAILED banner & exit /b 1)
+          findstr /c:"failed to compile" failure-output.txt >nul || (echo Missing the plain-English diagnosis & exit /b 1)
+          findstr /i /c:"RiffTypes.cpp" build-logs\errors.txt >nul || (echo errors.txt does not name the broken file & exit /b 1)
+          echo Failure path OK.
+
+      - name: Failure check - broken compiler setup is explained
+        shell: cmd
+        env:
+          FOUNDRY_TEST_TOOLSET: v999
+        run: |
+          call build_windows.bat nopause noinstall clean > compiler-failure-output.txt 2>&1
+          if not errorlevel 1 (type compiler-failure-output.txt & echo The script did not report the failure. & exit /b 1)
+          type compiler-failure-output.txt
+          findstr /c:"(during: configure)" compiler-failure-output.txt >nul || (echo Wrong stage & exit /b 1)
+          findstr /c:"MSB8020" build-logs\errors.txt >nul || (echo errors.txt is missing the hidden MSBuild error & exit /b 1)
+          echo Compiler-failure path OK.
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-script-check-logs
+          path: |
+            build-logs
+            failure-output.txt
+            compiler-failure-output.txt
