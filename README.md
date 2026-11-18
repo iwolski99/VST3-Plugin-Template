@@ -163,33 +163,52 @@ browser opens its output folder so you can audition and cull right away.
 - **Settings → Theme**: Orange (the original), Purple, Green, Blue or Red.
   Your choice is saved as the default for every Foundry you open.
 
-## Clone and build (Windows)
+## Build it on Windows (one click)
 
-You need **CMake 3.22+**, **Visual Studio 2022** (Desktop C++ workload), and
-an internet connection on the first configure so JUCE can be downloaded.
+This repository builds one plugin, Foundry. (Other experiments live on their
+own branches, not in this build.)
 
-```bat
-git clone https://github.com/iwolski99/VST3-Plugin-Template.git Foundry
-cd Foundry
-build_windows.bat
-```
+**One-time setup** - install these, all free:
 
-Run `build_windows.bat` **as Administrator** so it can copy `Foundry.vst3`
-into the default Windows VST3 folder:
+1. **Visual Studio 2022 Community** from <https://visualstudio.microsoft.com/>,
+   with the **Desktop development with C++** workload ticked.
+2. **CMake** from <https://cmake.org/download/>, choosing *Add CMake to the
+   system PATH*.
+3. **Git** from <https://git-scm.com/download/win> (needed the first time, to
+   download JUCE).
 
-```text
-C:\Program Files\Common Files\VST3\Foundry.vst3
-```
+**Build:** get the code (green *Code* button on GitHub → *Download ZIP* and
+unzip it, or `git clone https://github.com/iwolski99/VST3-Plugin-Template.git`),
+then **double-click `build_windows.bat`**. No need to run it as
+Administrator. It:
 
-If the copy is denied, the built plugin is still at:
+1. checks the tools above, and tells you exactly what's missing if anything is
+2. downloads JUCE (first time only)
+3. builds `Foundry.vst3` (5–25 minutes the first time, much faster after)
+4. installs it to `C:\Program Files\Common Files\VST3`. Windows shows one
+   permission prompt for this step. Close FL Studio first if Foundry is
+   loaded in it.
 
-```text
-build\Foundry_artefacts\Release\VST3\Foundry.vst3
-```
+Then in FL Studio: *Options › Manage plugins › Find installed plugins*, and
+load Foundry on an **instrument** channel.
 
-Copy that folder into `C:\Program Files\Common Files\VST3\` yourself, then
-rescan plugins in FL Studio. Load Foundry on an **instrument / generator**
-channel, not an effect slot.
+**If it fails**, the window says what went wrong and how to fix it, and
+shows the first errors. Everything is saved in the `build-logs` folder:
+
+| File | What's in it |
+|---|---|
+| `build-logs\errors.txt` | Just the error lines (send this if you need help) |
+| `build-logs\build-log.txt` | The full compile log |
+| `build-logs\configure-log.txt` | The setup / JUCE download log |
+
+Options: `build_windows.bat clean` rebuilds from scratch, `noinstall` only
+builds, `nopause` doesn't wait for a key at the end.
+
+**Don't want to build at all?** Every push to GitHub is built by GitHub
+Actions with this same script: open the repo's **Actions** tab, pick the
+latest *Build* run, and download **Foundry-VST3-Windows** under *Artifacts*.
+Unzip it and copy the `Foundry.vst3` folder into
+`C:\Program Files\Common Files\VST3`.
 
 ### Manual Windows build
 
@@ -197,6 +216,11 @@ channel, not an effect slot.
 cmake -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Release --target Foundry_VST3
 ```
+
+The plugin is then at `build\Foundry_artefacts\Release\VST3\Foundry.vst3`;
+copy that folder into `C:\Program Files\Common Files\VST3`. (Add
+`-DFOUNDRY_COPY_AFTER_BUILD=ON` to have the build copy it there itself, which
+needs an Administrator prompt.)
 
 ## macOS / Linux
 

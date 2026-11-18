@@ -36,3 +36,6 @@ JuceLibraryCode/
 *.a
 *.so
 build-asan/
+
+# Logs written by build_windows.bat
+build-logs/

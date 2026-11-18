@@ -70,6 +70,17 @@ set_target_properties(FoundryAssets PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 # ---------------------------------------------------------------------------
 # Plugin
 # ---------------------------------------------------------------------------
+# On macOS / Linux the plugin folder is in your home directory, so copying the
+# finished plugin there after each build is harmless. On Windows it lives in
+# Program Files: copying there needs Administrator rights and would make the
+# whole build fail without them, so build_windows.bat installs it instead.
+if(WIN32)
+    set(FOUNDRY_COPY_DEFAULT OFF)
+else()
+    set(FOUNDRY_COPY_DEFAULT ON)
+endif()
+option(FOUNDRY_COPY_AFTER_BUILD "Copy the built plugin into the system plugin folder" ${FOUNDRY_COPY_DEFAULT})
+
 juce_add_plugin(Foundry
     COMPANY_NAME                "Iwolski Audio"
     COMPANY_WEBSITE             "https://github.com/iwolski99/VST3-Plugin-Template"
@@ -84,7 +95,7 @@ juce_add_plugin(Foundry
     NEEDS_MIDI_OUTPUT           FALSE
     IS_MIDI_EFFECT              FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-    COPY_PLUGIN_AFTER_BUILD     TRUE
+    COPY_PLUGIN_AFTER_BUILD     ${FOUNDRY_COPY_AFTER_BUILD}
     NEEDS_CURL                  FALSE
     NEEDS_WEB_BROWSER           FALSE
     VST3_CATEGORIES             Instrument Sampler

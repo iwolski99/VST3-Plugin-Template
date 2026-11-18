@@ -28,8 +28,10 @@ jobs:
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DFOUNDRY_BUILD_TESTS=ON
 
+      # A bounded job count: an unbounded --parallel builds five JUCE targets
+      # at once and runs the Linux runner out of memory.
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: cmake --build build --config Release --parallel 4
 
       # find -exec always exits 0, so run the binary directly - otherwise a
       # failing test is reported as a passing build.
@@ -58,3 +60,31 @@ jobs:
           else
             "$bin"
           fi
+
+  # Runs the exact one-click script users run on Windows, end to end, and
+  # publishes the finished plugin (and the logs) as downloadable artifacts.
+  windows-script:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run build_windows.bat
+        shell: cmd
+        run: build_windows.bat nopause
+
+      - name: Check the plugin was installed
+        shell: cmd
+        run: if not exist "%CommonProgramFiles%\VST3\Foundry.vst3\Contents\x86_64-win\Foundry.vst3" (echo Foundry.vst3 not installed & exit /b 1)
+
+      - name: Upload Foundry.vst3
+        uses: actions/upload-artifact@v4
+        with:
+          name: Foundry-VST3-Windows
+          path: build/Foundry_artefacts/Release/VST3/Foundry.vst3
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-windows
+          path: build-logs
