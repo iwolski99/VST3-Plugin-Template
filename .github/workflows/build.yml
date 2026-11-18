@@ -82,9 +82,35 @@ jobs:
           name: Foundry-VST3-Windows
           path: build/Foundry_artefacts/Release/VST3/Foundry.vst3
 
-      - name: Upload build logs
-        if: always()
+      - name: Upload build logs (successful build)
         uses: actions/upload-artifact@v4
         with:
           name: build-logs-windows
           path: build-logs
+
+      # The failure path matters as much as the happy path: break the code on
+      # purpose, rebuild (incremental, so it's quick), and make sure the script
+      # fails, names the cause and writes the error into errors.txt.
+      - name: Failure check - inject a compile error
+        shell: bash
+        run: echo 'this is deliberately not C++;' >> Source/Core/RiffTypes.cpp
+
+      - name: Failure check - script must fail and explain why
+        shell: cmd
+        run: |
+          call build_windows.bat nopause noinstall > failure-output.txt 2>&1
+          if not errorlevel 1 (type failure-output.txt & echo The script did not report the failure. & exit /b 1)
+          type failure-output.txt
+          findstr /c:"BUILD FAILED" failure-output.txt >nul || (echo Missing BUILD FAILED banner & exit /b 1)
+          findstr /c:"failed to compile" failure-output.txt >nul || (echo Missing the plain-English diagnosis & exit /b 1)
+          findstr /i /c:"RiffTypes.cpp" build-logs\errors.txt >nul || (echo errors.txt does not name the broken file & exit /b 1)
+          echo Failure path OK.
+
+      - name: Upload build logs (deliberate failure)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-windows-failure-check
+          path: |
+            build-logs
+            failure-output.txt
