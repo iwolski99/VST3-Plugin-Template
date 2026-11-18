@@ -286,7 +286,61 @@ int main()
         expect (FoundryAudioProcessor::isEditableRiff (file), "rendered riffs are editable");
     }
 
-    // 10. The session carries the riff and the SYNC setting.
+    // 10. File management: only Foundry's own files can be deleted or moved.
+    {
+        bool reused = false;
+        auto next = proc.getSketch();
+        next.slots[5].lengthSteps = 3;               // make it a new riff
+        proc.setSketch (next, true);
+        auto riffWav = proc.renderRiff (err, reused);
+        expect (riffWav.existsAsFile(), "second render: " + err);
+
+        expect (proc.isManagedFile (riffWav), "rendered riffs are Foundry's own files");
+        expect (! proc.isManagedFile (toneA), "your own samples are not");
+
+        // Move a render into one of your own folders, copy your own sample.
+        auto keepers = dir.getChildFile ("Keepers");
+        keepers.createDirectory();
+        int copied = 0;
+        const int n = proc.moveOrCopyFiles ({ riffWav.getFullPathName(), toneA.getFullPathName() }, keepers, copied, err);
+        expect (n == 2 && copied == 1, "one file moved, one copied: " + err);
+        const auto movedRiff = keepers.getChildFile (riffWav.getFileName());
+        expect (movedRiff.existsAsFile() && ! riffWav.existsAsFile(), "a Foundry file is moved");
+        expect (foundry::riffSidecarFor (movedRiff).existsAsFile(), "its editable riff travels with it");
+        expect (toneA.existsAsFile() && keepers.getChildFile ("toneA.wav").existsAsFile(), "your own sample is copied, never moved");
+        expect (proc.getLibrary().findByPath (movedRiff.getFullPathName()).has_value()
+                    && ! proc.getLibrary().findByPath (riffWav.getFullPathName()).has_value(),
+                "the index follows the move");
+
+        // Batch delete skips anything that isn't Foundry's.
+        auto doomed = proc.renderRiff (err, reused);      // same riff again -> reused? no: the old file moved
+        expect (doomed.existsAsFile(), "render to delete");
+        int skipped = 0;
+        const int deleted = proc.deleteFiles ({ doomed.getFullPathName(), toneB.getFullPathName() }, skipped);
+        expect (deleted == 1 && skipped == 1, "delete removes Foundry files and skips your own");
+        expect (! doomed.existsAsFile() && ! foundry::riffSidecarFor (doomed).existsAsFile(), "deleted with its sidecar");
+        expect (toneB.existsAsFile(), "your own sample survives a batch delete");
+        expect (! proc.getLibrary().findByPath (doomed.getFullPathName()).has_value(), "deleted files leave the index");
+    }
+
+    // 11. Patterns: save to the library, list, load back.
+    {
+        foundry::PatternFile pf;
+        pf.kind = foundry::PatternKind::Bass;
+        pf.grid.setBars (1);
+        pf.grid.clear();
+        pf.grid.setStep (1, 6, true);
+        const auto f = proc.savePattern (pf, "Wobble Groove", err);
+        expect (f.existsAsFile(), "pattern saved: " + err);
+        expect (f.getParentDirectory() == proc.getConfig().patternDir (true), "bass patterns go to Patterns/Bass");
+        expect (proc.listPatterns (foundry::PatternKind::Bass).contains (f), "saved pattern is listed");
+        foundry::PatternFile back;
+        expect (proc.loadPattern (f, back, err) && back.grid.getStep (1, 6), "pattern loads back");
+        expect (proc.isManagedFile (f), "patterns are Foundry files (deletable)");
+        expect (FoundryAudioProcessor::hasPattern (f), "a pattern file counts as having a pattern");
+    }
+
+    // 12. The session carries the riff and the SYNC setting.
     proc.setFollowTransport (false);
     juce::MemoryBlock state;
     proc.getStateInformation (state);

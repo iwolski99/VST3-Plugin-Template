@@ -84,6 +84,21 @@ SettingsPanel::SettingsPanel (FoundryAudioProcessor& p)
         processor.getConfig().get().renderProtection = protectBox.getSelectedId() == 1;
     };
 
+    for (int i = 0; i < themeNames().size(); ++i)
+        themeBox.addItem (themeNames()[i] + " theme", i + 1);
+    themeBox.setSelectedId (juce::jmax (0, themeNames().indexOf (processor.getConfig().get().themeName, true)) + 1,
+                            juce::dontSendNotification);
+    themeBox.setTooltip ("Colour scheme. Your choice becomes the default for every Foundry you open.");
+    themeBox.onChange = [this]
+    {
+        const auto name = themeNames()[themeBox.getSelectedId() - 1];
+        processor.getConfig().get().themeName = name;
+        persist();
+        if (onThemeChanged)
+            onThemeChanged (name);
+    };
+    addAndMakeVisible (themeBox);
+
     bpmBox.setInputRestrictions (6, "0123456789.");
     bpmBox.setText (juce::String (processor.getConfig().get().customBpm, 0), juce::dontSendNotification);
 
@@ -227,6 +242,8 @@ void SettingsPanel::resized()
     genreBox.setBounds (row.removeFromLeft (180));
     row.removeFromLeft (10);
     bpmBox.setBounds (row.removeFromLeft (80));
+    row.removeFromLeft (10);
+    themeBox.setBounds (row.removeFromLeft (180));
 
     b.removeFromTop (12);
     row = b.removeFromTop (26);

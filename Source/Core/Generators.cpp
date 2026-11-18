@@ -417,6 +417,15 @@ GenerateOutcome generateDrumBatch (const DrumRequest& req,
         const auto parents = juce::StringArray { kickPath, clapPath, hatPath, ridePath }.joinIntoString (";");
         juce::String err;
 
+        // Every loop remembers its groove and its sounds, so it can be
+        // reopened in the sequencer and regenerated with a different pattern.
+        PatternFile sidecar;
+        sidecar.kind = PatternKind::Drums;
+        sidecar.grid = req.pattern;
+        sidecar.samples = { kickPath, clapPath, hatPath, ridePath };
+        sidecar.bpm = req.bpm;
+        sidecar.genre = req.genre;
+
         if (req.renderFull)
         {
             const auto stem = prefix + padded4 (seq);
@@ -429,6 +438,7 @@ GenerateOutcome generateDrumBatch (const DrumRequest& req,
                 out.error = err;
                 return out;
             }
+            sidecar.save (patternSidecarFor (file));
             out.paths.add (file.getFullPathName());
             ++out.filesWritten;
         }
@@ -450,6 +460,7 @@ GenerateOutcome generateDrumBatch (const DrumRequest& req,
                     out.error = err;
                     return out;
                 }
+                sidecar.save (patternSidecarFor (file));
                 out.paths.add (file.getFullPathName());
                 ++out.filesWritten;
             }
@@ -489,7 +500,22 @@ GenerateOutcome generateBassBatch (const BassRequest& req,
         return out;
     }
 
-    const int want = juce::jlimit (1, (int) pool.size(), juce::jlimit (2, 4, req.sourceCount));
+    // In pattern mode the grid decides how many sources are needed.
+    int patternRows = 0;
+    if (req.usePattern)
+        for (int r = 0; r < 4; ++r)
+            for (int st = 0; st < req.pattern.numSteps(); ++st)
+                if (req.pattern.getStep (r, st))
+                    patternRows = r + 1;
+
+    if (req.usePattern && patternRows == 0)
+    {
+        out.error = "The bass pattern is empty - click some steps in the grid first.";
+        return out;
+    }
+
+    const int want = req.usePattern ? patternRows
+                                    : juce::jlimit (1, (int) pool.size(), juce::jlimit (2, 4, req.sourceCount));
     const int fade = AudioIO::fadeSamplesFor (req.sampleRate);
     const int loopN = AudioIO::loopLengthSamples (req.bars, req.bpm, req.sampleRate);
     const double stepBeats = 4.0 / (double) kStepsPerBar;
@@ -518,20 +544,39 @@ GenerateOutcome generateBassBatch (const BassRequest& req,
         for (int i = (int) order.size() - 1; i > 0; --i)
             std::swap (order[(size_t) i], order[(size_t) rng.nextInt (i + 1)]);
 
-        const int used = juce::jmin (want, (int) order.size());
+        const int used = req.usePattern ? want : juce::jmin (want, (int) order.size());
         std::vector<juce::AudioBuffer<float>> shots ((size_t) used);
         juce::StringArray parentPaths;
 
+        size_t nextRandom = 0;
         for (int i = 0; i < used; ++i)
         {
-            const auto* item = pool[(size_t) order[(size_t) i]];
-            parentPaths.add (item->path);
-            if (! loadStereoAt (io, juce::File (item->path), req.sampleRate, shots[(size_t) i], out.error))
+            juce::String path;
+            const auto& lock = req.locks[(size_t) juce::jmin (i, 3)];
+            if (lock.locked && lock.path.isNotEmpty() && juce::File (lock.path).existsAsFile())
+                path = lock.path;
+            else
+                path = pool[(size_t) order[nextRandom++ % order.size()]]->path;
+
+            parentPaths.add (path);
+            if (! loadStereoAt (io, juce::File (path), req.sampleRate, shots[(size_t) i], out.error))
                 return out;
         }
 
         juce::String patternId;
-        auto hits = makeBassPattern (req.genre, req.variation, req.bars, used, rng, patternId);
+        std::vector<BassHit> hits;
+        if (req.usePattern)
+        {
+            patternId = "user_pattern";
+            for (int st = 0; st < req.pattern.numSteps() && st < req.bars * kStepsPerBar; ++st)
+                for (int r = 0; r < used; ++r)
+                    if (req.pattern.getStep (r, st))
+                        hits.push_back ({ st, r });
+        }
+        else
+        {
+            hits = makeBassPattern (req.genre, req.variation, req.bars, used, rng, patternId);
+        }
 
         juce::AudioBuffer<float> full (2, loopN);
         full.clear();
@@ -560,6 +605,21 @@ GenerateOutcome generateBassBatch (const BassRequest& req,
         {
             out.error = err;
             return out;
+        }
+
+        {
+            PatternFile sidecar;
+            sidecar.kind = PatternKind::Bass;
+            sidecar.grid.setBars (req.bars);
+            sidecar.grid.clear();
+            for (const auto& h : hits)
+                if (h.source >= 0 && h.source < 4)
+                    sidecar.grid.setStep (h.source, h.step, true);
+            for (int i = 0; i < juce::jmin (4, parentPaths.size()); ++i)
+                sidecar.samples[(size_t) i] = parentPaths[i];
+            sidecar.bpm = req.bpm;
+            sidecar.genre = req.genre;
+            sidecar.save (patternSidecarFor (file));
         }
 
         out.paths.add (file.getFullPathName());

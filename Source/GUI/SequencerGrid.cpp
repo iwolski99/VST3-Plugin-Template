@@ -26,7 +26,7 @@ void SequencerGrid::paint (juce::Graphics& g)
     FoundryLookAndFeel::drawPanel (g, bounds, theme, ui::panelCorner);
 
     auto inner = bounds.reduced (12.0f, 10.0f);
-    const char* names[] = { "KICK", "CLAP", "HAT", "RIDE" };
+    const auto& names = rowNames;
     const int steps = pattern.numSteps();
     const int bars = juce::jmax (1, pattern.bars);
     const float labelW = 52.0f;
@@ -67,7 +67,8 @@ void SequencerGrid::paint (juce::Graphics& g)
 
             if (on)
             {
-                const auto acc = (r == 0 || r == 1) ? theme.accentAlt : theme.accent;
+                const auto acc = exclusive ? theme.accent.withRotatedHue (-0.04f * (float) r)
+                                           : ((r == 0 || r == 1) ? theme.accentAlt : theme.accent);
                 FoundryLookAndFeel::drawActivePill (g, cell, 3.0f, acc, 0.95f);
             }
             else
@@ -107,7 +108,11 @@ void SequencerGrid::hit (juce::Point<int> p, bool toggleOnce)
 
     lastRow = r;
     lastStep = s;
-    pattern.setStep (r, s, ! pattern.getStep (r, s));
+    const bool turnOn = ! pattern.getStep (r, s);
+    if (exclusive && turnOn)
+        for (int other = 0; other < 4; ++other)
+            pattern.setStep (other, s, false);   // one source per step
+    pattern.setStep (r, s, turnOn);
     if (onChanged)
         onChanged();
     repaint();

@@ -11,6 +11,7 @@ class SettingsPanel : public juce::Component
 public:
     std::function<void()> onClose;
     std::function<void()> onLibraryChanged;
+    std::function<void (const juce::String&)> onThemeChanged;
 
     explicit SettingsPanel (FoundryAudioProcessor& p);
 
@@ -34,7 +35,7 @@ private:
     juce::TextButton folderButtons[foundry::kNumFolderRoles];
     juce::Label folderLabels[foundry::kNumFolderRoles];
     juce::Label rootLabel;
-    juce::ComboBox rateBox, genreBox, protectBox;
+    juce::ComboBox rateBox, genreBox, protectBox, themeBox;
     juce::TextEditor bpmBox;
     StatusBanner banner;
     std::unique_ptr<juce::FileChooser> chooser;

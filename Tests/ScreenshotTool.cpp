@@ -82,6 +82,27 @@ int main (int argc, char** argv)
     cfg.folder (foundry::FolderRole::Snare);
     writeShot (cfg.folder (foundry::FolderRole::Clap).getChildFile ("Clap_Tight.wav"), 900.0, 0.3, 20.0);
 
+    // One of your own folders, a saved pattern, and a generated bass loop with its pattern.
+    auto mine = root.getChildFile ("Field Recordings");
+    mine.createDirectory();
+    writeShot (mine.getChildFile ("Metal_Clank.wav"), 700.0, 0.5, 6.0);
+    cfg.get().userFolders.add (mine.getFullPathName());
+
+    {
+        foundry::PatternFile pf;
+        pf.kind = foundry::PatternKind::Drums;
+        pf.grid = foundry::defaultDrumPattern (foundry::Genre::Riddim, 2);
+        pf.save (cfg.patternDir (false).getChildFile (juce::String ("Riddim Bounce") + foundry::kPatternExtension));
+        pf.grid = foundry::defaultDrumPattern (foundry::Genre::Dubstep, 1);
+        pf.save (cfg.patternDir (false).getChildFile (juce::String ("Halftime Basic") + foundry::kPatternExtension));
+        pf.kind = foundry::PatternKind::Bass;
+        pf.grid.setBars (1);
+        pf.grid.clear();
+        for (auto [r, st] : { std::pair<int, int> { 0, 0 }, { 0, 3 }, { 1, 6 }, { 1, 8 }, { 2, 11 }, { 0, 12 }, { 3, 14 } })
+            pf.grid.setStep (r, st, true);
+        pf.save (cfg.patternDir (true).getChildFile (juce::String ("Wobble Call") + foundry::kPatternExtension));
+    }
+
     auto scan = foundry::scanLibrary (cfg, proc->getLibrary(), nullptr, nullptr);
     if (! scan.ok)
         std::cerr << "scan: " << scan.error << "\n";
@@ -112,15 +133,32 @@ int main (int argc, char** argv)
         ed.setSize (FoundryAudioProcessorEditor::kBaseWidth, FoundryAudioProcessorEditor::kBaseHeight);
 
         ed.getBrowser().showFolder (bass);
-        snap (ed, out.getChildFile ("01-riffmaker-bass-folder.png"));
+        ed.getBrowser().selectAll();
+        snap (ed, out.getChildFile ("01-riffmaker-multiselect.png"));
 
         ed.getBrowser().navigateTo (foundry::BrowserModel::root());
-        snap (ed, out.getChildFile ("02-riffmaker-browser-root.png"));
+        snap (ed, out.getChildFile ("02-browser-root.png"));
 
-        ed.showTab (FoundryAudioProcessorEditor::generatorTab);
-        snap (ed, out.getChildFile ("03-generator-drums.png"));
+        ed.applyThemeByName ("Purple");
+        ed.getBrowser().showFolder (cfg.patternDir (true));
+        ed.openPattern (cfg.patternDir (true).getChildFile (juce::String ("Wobble Call") + foundry::kPatternExtension));
+        snap (ed, out.getChildFile ("03-purple-bass-pattern.png"));
 
+        ed.applyThemeByName ("Green");
+        ed.getBrowser().showFolder (cfg.patternDir (false));
+        ed.openPattern (cfg.patternDir (false).getChildFile (juce::String ("Riddim Bounce") + foundry::kPatternExtension));
+        snap (ed, out.getChildFile ("04-green-drum-pattern.png"));
+
+        ed.applyThemeByName ("Blue");
         ed.showTab (FoundryAudioProcessorEditor::riffMakerTab);
+        ed.setSize (1500, 980);
+        ed.getBrowser().showFolder (bass);
+        snap (ed, out.getChildFile ("05-blue-resized.png"));
+
+        ed.applyThemeByName ("Red");
+        ed.setSize (1000, 740);
+        snap (ed, out.getChildFile ("06-red-minimum-size.png"));
+        ed.applyThemeByName ("Orange");
     }
 
     proc->releaseResources();

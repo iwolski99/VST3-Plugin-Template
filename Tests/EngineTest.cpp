@@ -193,6 +193,84 @@ int main()
     expect (b1.filesWritten == 3, "bass quantity");
     expect (db.countInCategory (foundry::Category::BassLoopsBase) >= 3, "bass indexed");
 
+    // --- patterns: every generated loop remembers its groove and its sounds ---
+    {
+        expect (! d1.paths.isEmpty(), "drum batch produced files");
+        if (! d1.paths.isEmpty())
+        {
+            const juce::File loop (d1.paths[0]);
+            foundry::PatternFile pf;
+            expect (foundry::PatternFile::load (foundry::patternSidecarFor (loop), pf), "drum loop has a pattern saved next to it");
+            expect (pf.kind == foundry::PatternKind::Drums, "drum sidecar is a drum pattern");
+            bool same = pf.grid.bars == drums.pattern.bars;
+            for (int r = 0; r < 4; ++r)
+                for (int st = 0; st < drums.pattern.numSteps(); ++st)
+                    same = same && pf.grid.getStep (r, st) == drums.pattern.getStep (r, st);
+            expect (same, "the saved grid is the pattern the loop was made from");
+            expect (juce::File (pf.samples[0]).existsAsFile() && juce::File (pf.samples[1]).existsAsFile(),
+                    "the saved pattern names the kick and clap it used");
+        }
+
+        if (! b1.paths.isEmpty())
+        {
+            foundry::PatternFile pf;
+            expect (foundry::PatternFile::load (foundry::patternSidecarFor (juce::File (b1.paths[0])), pf),
+                    "bass loop has a pattern saved next to it");
+            expect (pf.kind == foundry::PatternKind::Bass && pf.hasSamples(), "bass sidecar holds its sources");
+        }
+
+        // Bass pattern mode with a locked source.
+        foundry::BassRequest pb = bass;
+        pb.quantity = 1;
+        pb.bars = 1;
+        pb.usePattern = true;
+        pb.pattern.setBars (1);
+        pb.pattern.clear();
+        pb.pattern.setStep (0, 0, true);
+        pb.pattern.setStep (1, 8, true);
+        pb.pattern.setStep (0, 12, true);
+        const auto lockedA = bassDir.getChildFile ("Bass_B.wav").getFullPathName();
+        pb.locks[0].locked = true;
+        pb.locks[0].path = lockedA;
+
+        auto pr = foundry::generateBassBatch (pb, db, shots, nullptr, nullptr);
+        expect (pr.ok && pr.filesWritten == 1, "bass pattern mode renders: " + pr.error);
+        if (pr.ok && ! pr.paths.isEmpty())
+        {
+            foundry::PatternFile out;
+            expect (foundry::PatternFile::load (foundry::patternSidecarFor (juce::File (pr.paths[0])), out), "pattern-mode sidecar");
+            expect (out.grid.getStep (0, 0) && out.grid.getStep (1, 8) && out.grid.getStep (0, 12) && ! out.grid.getStep (0, 4),
+                    "bass pattern mode plays exactly the drawn grid");
+            expect (out.samples[0] == lockedA, "a locked bass source is used as-is");
+
+            juce::AudioBuffer<float> pw;
+            double psr = 0.0;
+            expect (io.loadWav (juce::File (pr.paths[0]), pw, psr, err), "load pattern-mode bass");
+            const int stepN = foundry::AudioIO::beatsToSamples (0.25, pb.bpm, 48000.0);
+            expect (pw.getRMSLevel (0, 4 * stepN + stepN / 2, stepN / 2) < pw.getRMSLevel (0, 0, stepN / 2),
+                    "nothing new starts on a step left empty");
+        }
+
+        foundry::BassRequest empty = pb;
+        empty.pattern.clear();
+        auto er = foundry::generateBassBatch (empty, db, shots, nullptr, nullptr);
+        expect (! er.ok && er.error.containsIgnoreCase ("empty"), "an empty bass pattern is refused with a clear message");
+
+        // Pattern files round-trip.
+        foundry::PatternFile a;
+        a.kind = foundry::PatternKind::Bass;
+        a.grid.setBars (2);
+        a.grid.clear();
+        a.grid.setStep (2, 17, true);
+        a.samples[2] = "/x/y.wav";
+        a.bpm = 150.0;
+        foundry::PatternFile b;
+        expect (foundry::PatternFile::fromJson (a.toJson(), b), "pattern JSON parses");
+        expect (b.kind == a.kind && b.grid.bars == 2 && b.grid.getStep (2, 17) && ! b.grid.getStep (2, 16)
+                    && b.samples[2] == "/x/y.wav" && std::abs (b.bpm - 150.0) < 0.01,
+                "pattern JSON round-trips");
+    }
+
     // --- splice ---
     foundry::SpliceRequest sp;
     sp.genre = foundry::Genre::Dubstep;
@@ -401,7 +479,7 @@ int main()
             foundry::BrowserModel model (config, db);
             bool truncated = false;
 
-            auto top = model.list (foundry::BrowserModel::root(), {}, truncated);
+            auto top = model.list (foundry::BrowserModel::root(), {}, true, truncated);
             auto findEntry = [] (const std::vector<foundry::BrowserEntry>& v, const juce::String& name) -> const foundry::BrowserEntry*
             {
                 for (auto& e : v) if (e.name == name) return &e;
@@ -412,14 +490,14 @@ int main()
             expect (drumsEntry != nullptr && drumsEntry->isFolder() && drumsEntry->count >= 7,
                     "root shows a Drums folder counting every drum sample");
             expect (findEntry (top, "Favourites") != nullptr && findEntry (top, "My Riffs") != nullptr
-                        && findEntry (top, "Bass") != nullptr && findEntry (top, "Generated") != nullptr,
-                    "root shows Favourites, Bass, My Riffs and Generated");
+                        && findEntry (top, "Bass") != nullptr && findEntry (top, "Batch Generated") != nullptr,
+                    "root shows Favourites, Bass, My Riffs and Batch Generated");
 
-            auto drumsList = model.list (drumsEntry->target, {}, truncated);
+            auto drumsList = model.list (drumsEntry->target, {}, true, truncated);
             const auto* kicksEntry = findEntry (drumsList, "Kicks");
             expect (kicksEntry != nullptr && kicksEntry->count == 3, "Drums > Kicks counts nested files too");
 
-            auto kicksList = model.list (kicksEntry->target, {}, truncated);
+            auto kicksList = model.list (kicksEntry->target, {}, true, truncated);
             expect (! kicksList.empty() && kicksList.front().isFolder() && kicksList.front().name == "Hard",
                     "a real sub-folder is listed first");
             int files = 0;
@@ -430,14 +508,14 @@ int main()
             expect (crumbs.size() == 4 && crumbs[1].title == "Drums" && crumbs[2].title == "Kicks" && crumbs[3].title == "Hard",
                     "breadcrumb: Library > Drums > Kicks > Hard");
 
-            auto hits = model.list (drumsEntry->target, "hard", truncated);
+            auto hits = model.list (drumsEntry->target, "hard", true, truncated);
             expect (hits.size() == 1 && hits[0].name == "Kick_Hard", "search inside a folder finds nested files");
 
             auto pool = model.filesUnder (drumsEntry->target);
             expect (pool.size() >= 7, "the dice can draw from everything under a folder");
 
             expect (db.setFavorite (kicksList.back().item.id, true, err), "favourite a kick");
-            auto favs = model.list (top.front().target, {}, truncated);
+            auto favs = model.list (top.front().target, {}, true, truncated);
             expect (favs.size() == 1, "Favourites lists favourited samples");
 
             // Thumbnails arrive from the background thread.
@@ -450,6 +528,48 @@ int main()
             expect (t != nullptr && ! t->failed && (int) t->peaks.size() == foundry::ThumbnailCache::kBins,
                     "thumbnail computed in the background");
             expect (t != nullptr && t->seconds > 0.1, "thumbnail knows the duration");
+
+            // Flat view (folders hidden) lists every file below a folder.
+            auto flat = model.list (drumsEntry->target, {}, false, truncated);
+            bool allFiles = ! flat.empty();
+            for (auto& e : flat) allFiles = allFiles && e.isFile();
+            expect (allFiles && flat.size() >= 7, "flat view lists every drum sample with no folders");
+
+            // Patterns folder lists pattern files from disk.
+            foundry::PatternFile libPattern;
+            libPattern.grid = foundry::defaultDrumPattern (foundry::Genre::Riddim, 1);
+            expect (libPattern.save (config.patternDir (false).getChildFile (juce::String ("Half Time") + foundry::kPatternExtension)),
+                    "save a pattern to the library");
+            const auto* patTop = findEntry (top, "Patterns");
+            expect (patTop != nullptr, "root shows a Patterns folder");
+            if (patTop != nullptr)
+            {
+                auto patRoot = model.list (patTop->target, {}, true, truncated);
+                const auto* drumsPat = findEntry (patRoot, "Drums");
+                expect (drumsPat != nullptr && drumsPat->count == 1, "Patterns > Drums counts its patterns");
+                if (drumsPat != nullptr)
+                {
+                    auto pats = model.list (drumsPat->target, {}, true, truncated);
+                    expect (pats.size() == 1 && pats[0].isPattern() && pats[0].name == "Half Time",
+                            "pattern files appear as pattern tiles");
+                }
+            }
+
+            bool hasAdd = false;
+            for (auto& e : top) hasAdd = hasAdd || e.type == foundry::BrowserEntry::Type::AddFolder;
+            expect (hasAdd, "root offers an Add folder tile");
+
+            // Your own folders: added to the browser and indexed, keeping categories.
+            auto mine = root.getChildFile ("MyStuff");
+            mine.createDirectory();
+            expect (writeShot (io, mine.getChildFile ("Weird_Hit.wav"), 48000.0, 300.0), "write custom sample");
+            config.get().userFolders.add (mine.getFullPathName());
+            auto scan3 = foundry::scanLibrary (config, db, nullptr, nullptr);
+            expect (scan3.ok, "scan with a custom folder: " + scan3.error);
+            auto top2 = model.list (foundry::BrowserModel::root(), {}, true, truncated);
+            const auto* mineEntry = findEntry (top2, "MyStuff");
+            expect (mineEntry != nullptr && mineEntry->custom && mineEntry->count == 1, "a custom folder shows at the top level");
+            expect (db.findByPath (mine.getChildFile ("Weird_Hit.wav").getFullPathName()).has_value(), "custom folder is indexed");
 
             std::vector<juce::uint8> cached;
             double secs = 0.0;

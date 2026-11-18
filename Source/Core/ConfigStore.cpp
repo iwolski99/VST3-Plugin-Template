@@ -77,6 +77,33 @@ juce::File ConfigStore::riffDir() const
     return dir;
 }
 
+juce::File ConfigStore::patternsRoot() const
+{
+    auto r = root();
+    auto dir = r.isDirectory() ? r.getChildFile ("Patterns") : appDataDir().getChildFile ("Patterns");
+    if (! dir.isDirectory())
+        dir.createDirectory();
+    return dir;
+}
+
+juce::File ConfigStore::patternDir (bool bass) const
+{
+    auto dir = patternsRoot().getChildFile (bass ? "Bass" : "Drums");
+    if (! dir.isDirectory())
+        dir.createDirectory();
+    return dir;
+}
+
+juce::File ConfigStore::generatedDrumsRoot() const
+{
+    return generatedDrumDir (Genre::Riddim).getParentDirectory();
+}
+
+juce::File ConfigStore::generatedBassRoot() const
+{
+    return generatedBassDir (false).getParentDirectory();
+}
+
 double ConfigStore::resolveBpm (Genre g, double hostBpm) const
 {
     switch (config.tempoMode)
@@ -121,6 +148,9 @@ bool ConfigStore::createRecommendedStructure (juce::String& error)
         { FolderRole::GeneratedBass,  "Generated/Bass_Loops" },
         { FolderRole::Riffs,          "Riffs" },
     };
+
+    r.getChildFile ("Patterns").getChildFile ("Drums").createDirectory();
+    r.getChildFile ("Patterns").getChildFile ("Bass").createDirectory();
 
     for (const auto& m : map)
     {
@@ -225,6 +255,19 @@ bool ConfigStore::load (const juce::File& file, juce::String& error)
     // the first tab now lives under Generator.
     config.lastTab = (int) obj->getProperty ("lastTab") > 0 ? 1 : 0;
     config.browserListView = (bool) obj->getProperty ("browserListView");
+    config.browserShowFolders = ! obj->hasProperty ("browserShowFolders") || (bool) obj->getProperty ("browserShowFolders");
+    config.browserHeight = obj->hasProperty ("browserHeight") ? juce::jlimit (150, 900, (int) obj->getProperty ("browserHeight")) : 240;
+    config.uiWidth  = juce::jlimit (0, 8000, (int) obj->getProperty ("uiWidth"));
+    config.uiHeight = juce::jlimit (0, 8000, (int) obj->getProperty ("uiHeight"));
+    config.themeName = obj->getProperty ("theme").toString();
+    if (config.themeName.isEmpty())
+        config.themeName = "Orange";
+
+    config.userFolders.clear();
+    if (auto* uf = obj->getProperty ("userFolders").getArray())
+        for (const auto& f : *uf)
+            if (f.toString().isNotEmpty())
+                config.userFolders.addIfNotAlreadyThere (f.toString());
     config.savedDrumPatternJson = obj->getProperty ("savedDrumPattern").toString();
 
     if (auto* folders = obj->getProperty ("folders").getDynamicObject())
@@ -275,6 +318,10 @@ bool ConfigStore::savePreferences (const juce::File& file, juce::String& error) 
     d.uiZoom               = config.uiZoom;
     d.lastTab              = config.lastTab;
     d.browserListView      = config.browserListView;
+    d.browserShowFolders   = config.browserShowFolders;
+    d.browserHeight        = config.browserHeight;
+    d.uiWidth              = config.uiWidth;
+    d.uiHeight             = config.uiHeight;
     d.savedDrumPatternJson = config.savedDrumPatternJson;
     return onDisk.save (file, error);
 }
@@ -296,6 +343,12 @@ bool ConfigStore::save (const juce::File& file, juce::String& error) const
     obj->setProperty ("uiZoom", config.uiZoom);
     obj->setProperty ("lastTab", config.lastTab);
     obj->setProperty ("browserListView", config.browserListView);
+    obj->setProperty ("browserShowFolders", config.browserShowFolders);
+    obj->setProperty ("browserHeight", config.browserHeight);
+    obj->setProperty ("uiWidth", config.uiWidth);
+    obj->setProperty ("uiHeight", config.uiHeight);
+    obj->setProperty ("theme", config.themeName);
+    obj->setProperty ("userFolders", juce::var (config.userFolders));
     obj->setProperty ("savedDrumPattern", config.savedDrumPatternJson);
 
     auto folders = juce::DynamicObject::Ptr (new juce::DynamicObject());

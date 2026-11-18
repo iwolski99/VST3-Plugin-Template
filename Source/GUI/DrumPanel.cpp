@@ -94,33 +94,44 @@ DrumPanel::DrumPanel (FoundryAudioProcessor& p)
         processor.persistConfig (err);
         banner.setMessage ("Pattern saved as your default.", false, false);
     };
+    savePatternButton.setTooltip ("Save this groove to Patterns > Drums, where the browser shows it");
     savePatternButton.onClick = [this]
     {
-        auto name = "Pattern " + juce::String (processor.getConfig().get().customPatternNames.size() + 1);
-        processor.getConfig().saveCustomPattern (name, grid.getPattern());
-        loadPatternBox.addItem (name, loadPatternBox.getNumItems() + 1);
-        juce::String err;
-        processor.persistConfig (err);
-        banner.setMessage ("Saved " + name, false, false);
+        const auto initial = "Drum Pattern " + juce::String (processor.listPatterns (foundry::PatternKind::Drums).size() + 1);
+        juce::Component::SafePointer<DrumPanel> safe (this);
+        askForName ("Save drum pattern", "Name this pattern:", initial, [safe] (const juce::String& name)
+        {
+            if (safe == nullptr)
+                return;
+            foundry::PatternFile pf;
+            pf.kind = foundry::PatternKind::Drums;
+            pf.grid = safe->grid.getPattern();
+            pf.genre = safe->processor.getUiGenre();
+            juce::String err;
+            const auto f = safe->processor.savePattern (pf, name, err);
+            safe->banner.setMessage (f.existsAsFile() ? "Saved " + f.getFileNameWithoutExtension() + " to Patterns > Drums." : err,
+                                     ! f.existsAsFile(), false);
+            safe->refreshPatternList();
+            if (safe->onPatternsChanged)
+                safe->onPatternsChanged();
+        });
     };
 
-    loadPatternBox.addItem ("Load saved...", 1);
-    for (int i = 0; i < processor.getConfig().get().customPatternNames.size(); ++i)
-        loadPatternBox.addItem (processor.getConfig().get().customPatternNames[i], i + 2);
-    loadPatternBox.setSelectedId (1, juce::dontSendNotification);
+    loadPatternBox.setTooltip ("Patterns saved in Patterns > Drums");
     loadPatternBox.onChange = [this]
     {
-        const int id = loadPatternBox.getSelectedId();
-        if (id <= 1)
+        const int idx = loadPatternBox.getSelectedId() - 2;
+        if (idx < 0 || idx >= patternFiles.size())
             return;
-        foundry::DrumPattern loaded;
-        if (processor.getConfig().loadCustomPattern (loadPatternBox.getText(), loaded))
-        {
-            processor.getDrumPattern() = loaded;
-            processor.setUiBars (loaded.bars);
-            grid.setPattern (loaded);
-        }
+        foundry::PatternFile pf;
+        juce::String err;
+        if (processor.loadPattern (patternFiles[idx], pf, err))
+            applyPatternFile (pf, patternFiles[idx].getFileNameWithoutExtension());
+        else
+            banner.setMessage (err, true, false);
+        loadPatternBox.setSelectedId (1, juce::dontSendNotification);
     };
+    refreshPatternList();
 
     grid.setPattern (processor.getDrumPattern());
     grid.onChanged = [this] { processor.getDrumPattern() = grid.getPattern(); };
@@ -165,8 +176,50 @@ void DrumPanel::setTheme (const Theme& t)
 void DrumPanel::syncFromProcessor()
 {
     quantity.setValue (processor.getUiQuantity(), false);
+    barsBox.setSelectedId (processor.getUiBars() == 4 ? 3 : processor.getUiBars(), juce::dontSendNotification);
     grid.setPattern (processor.getDrumPattern());
     refreshLockLabels();
+    refreshPatternList();
+}
+
+void DrumPanel::refreshPatternList()
+{
+    patternFiles = processor.listPatterns (foundry::PatternKind::Drums);
+    loadPatternBox.clear (juce::dontSendNotification);
+    loadPatternBox.addItem (patternFiles.isEmpty() ? "No saved patterns yet" : "Load pattern...", 1);
+    for (int i = 0; i < patternFiles.size(); ++i)
+        loadPatternBox.addItem (patternFiles[i].getFileNameWithoutExtension(), i + 2);
+    loadPatternBox.setSelectedId (1, juce::dontSendNotification);
+}
+
+void DrumPanel::applyPatternFile (const foundry::PatternFile& pf, const juce::String& name)
+{
+    processor.setUiBars (pf.grid.bars);
+    processor.getDrumPattern() = pf.grid;
+    syncFromProcessor();
+
+    // A loop's own pattern brings its sounds with it: lock them, so
+    // regenerating keeps the sounds and only the groove changes.
+    int locked = 0;
+    if (pf.hasSamples())
+    {
+        for (int r = 0; r < 4; ++r)
+        {
+            auto& lk = processor.getLock (r);
+            const juce::File f (pf.samples[(size_t) r]);
+            lk.locked = f.existsAsFile();
+            lk.path = lk.locked ? f.getFullPathName() : juce::String();
+            lk.name = lk.locked ? f.getFileName() : juce::String();
+            locked += lk.locked ? 1 : 0;
+        }
+        refreshLockLabels();
+    }
+
+    banner.setMessage (locked > 0
+                           ? "Opened " + name + " with its " + juce::String (locked)
+                                 + " sounds locked. Edit the grid, then GENERATE (quantity 1 remakes just this loop)."
+                           : "Loaded pattern " + name + ".",
+                       false, false);
 }
 
 void DrumPanel::applyLock (const foundry::LibraryItem& item)
@@ -232,7 +285,7 @@ void DrumPanel::resized()
     if (banner.isVisible())
         banner.setBounds (b.removeFromTop (34)), b.removeFromTop (8);
 
-    b.removeFromTop (12);
+    b.removeFromTop (4);
     auto left = b.removeFromLeft (280);
     auto row = left.removeFromTop (22);
     styleBox.setBounds (row.removeFromLeft (130));
@@ -283,9 +336,7 @@ void DrumPanel::paint (juce::Graphics& g)
 {
     FoundryLookAndFeel::drawPanel (g, getLocalBounds().toFloat().reduced (6.0f), theme);
 
-    g.setFont (FoundryLookAndFeel::labelFont (8.5f, true, 0.14f));
-    g.setColour (theme.textDim);
-    g.drawText ("STYLE", 22, 20, 80, 12, juce::Justification::centredLeft);
+
 }
 
 } // namespace pt

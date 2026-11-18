@@ -27,18 +27,26 @@ public:
     void resized() override;
     bool keyPressed (const juce::KeyPress&) override;
 
-    static constexpr int kBaseWidth  = 1120;
-    static constexpr int kBaseHeight = 820;
+    static constexpr int kBaseWidth  = 1120;    // default logical size
+    static constexpr int kBaseHeight = 860;
+    static constexpr int kMinWidth   = 1000;    // smallest logical size
+    static constexpr int kMinHeight  = 740;
 
-    static constexpr int kHeaderH  = 52;
-    static constexpr int kFooterH  = 64;
-    static constexpr int kBrowserH = 276;
+    static constexpr int kHeaderH   = 52;
+    static constexpr int kFooterH   = 64;
+    static constexpr int kSplitterH = 8;
+    static constexpr int kMinBrowserH = 170;
+    static constexpr int kMinMainH    = 420;   // room for the generator pages
 
     enum Tab { riffMakerTab = 0, generatorTab = 1 };
     void showTab (int index);
 
     pt::TileBrowser&    getBrowser() noexcept   { return browser; }
     pt::RiffMakerPanel& getRiffPanel() noexcept { return riffPanel; }
+    pt::GeneratorPanel& getGeneratorPanel() noexcept { return generatorPanel; }
+
+    void applyThemeByName (const juce::String& name);
+    void openPattern (const juce::File& file);
 
 protected:
     /** Dragging a browser tile or the riff handle out of the window hands the
@@ -49,6 +57,10 @@ protected:
 private:
     void applyTheme (const pt::Theme& t);
     void showSettings (bool show);
+    float scale() const noexcept { return (float) zoomPercent / 100.0f; }
+    void updateResizeLimits();
+
+    class Splitter;
     void setZoomPercent (int percent, bool store);
     int  loadStoredZoom() const;
     void storeZoom (int percent);
@@ -67,6 +79,8 @@ private:
     pt::GeneratorPanel generatorPanel;
     pt::SettingsPanel settingsPanel;
     pt::FooterBar footer;
+    std::unique_ptr<Splitter> splitter;
+    int browserHeight = 240;
     pt::ProgressOverlay overlay;
     pt::StatusBanner banner;
 

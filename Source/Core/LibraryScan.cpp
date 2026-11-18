@@ -66,7 +66,7 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
 
     const bool anySourceMapped = std::any_of (roots.begin(), roots.end(),
                                               [] (const auto& r) { return r.first != FolderRole::Riffs; });
-    if (! anySourceMapped)
+    if (! anySourceMapped && config.get().userFolders.isEmpty())
     {
         out.error = "No source folders are mapped. Open Settings and assign folders, or create the recommended structure.";
         return out;
@@ -74,6 +74,7 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
 
     juce::Array<juce::File> files;
     juce::Array<FolderRole> roles;
+    juce::Array<bool> custom;   // true: a folder the user added in the browser
 
     for (const auto& r : roots)
     {
@@ -82,6 +83,20 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
         {
             files.add (f);
             roles.add (r.first);
+            custom.add (false);
+        }
+    }
+
+    for (const auto& path : config.get().userFolders)
+    {
+        const juce::File dir (path);
+        if (! dir.isDirectory())
+            continue;
+        for (auto& f : dir.findChildFiles (juce::File::findFiles, true, audioFileWildcard()))
+        {
+            files.add (f);
+            roles.add (FolderRole::Kick);   // unused for custom folders
+            custom.add (true);
         }
     }
 
@@ -104,8 +119,12 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
         if (! isSupportedAudioFile (f))
             continue;
 
+        if (seen.count (f.getFullPathName()) != 0)
+            continue;   // inside both a library folder and an added folder
+
         const auto role = roles.getUnchecked (i);
-        const auto cat = inferGeneratedCategory (role, f, config.folder (role));
+        const bool isCustom = custom.getUnchecked (i);
+        auto cat = isCustom ? Category::Unknown : inferGeneratedCategory (role, f, config.folder (role));
 
         LibraryItem it;
         bool alreadyIndexed = false;
@@ -114,6 +133,11 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
             it = *existing;
             alreadyIndexed = true;
         }
+
+        // A file moved into one of your own folders keeps what it was
+        // (a kick stays a kick, a riff stays a riff).
+        if (isCustom && alreadyIndexed && it.category != Category::Unknown)
+            cat = it.category;
 
         it.filename = f.getFileName();
         it.path = f.getFullPathName();

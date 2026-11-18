@@ -54,6 +54,35 @@ public:
     foundry::DrumPattern&       getDrumPattern() noexcept { return drumPattern; }
     foundry::SampleLock&        getLock (int row) noexcept { return locks[(size_t) juce::jlimit (0, 3, row)]; }
 
+    foundry::DrumPattern&       getBassPattern() noexcept { return bassPattern; }
+    foundry::SampleLock&        getBassLock (int row) noexcept { return bassLocks[(size_t) juce::jlimit (0, 3, row)]; }
+    bool bassUsePattern = false;
+
+    //== patterns ============================================================
+    /** Reads a .foundrypattern file, or the pattern saved next to a loop. */
+    bool loadPattern (const juce::File& file, foundry::PatternFile& out, juce::String& error) const;
+    static bool hasPattern (const juce::File& file);
+
+    /** Saves into the pattern library (Patterns/Drums or Patterns/Bass). */
+    juce::File savePattern (const foundry::PatternFile& pattern, const juce::String& name, juce::String& error);
+    juce::Array<juce::File> listPatterns (foundry::PatternKind kind) const;
+
+    //== file management =====================================================
+    /** True for files Foundry made: batch output, rendered riffs, patterns.
+        Only these can be deleted from the browser - never your own samples. */
+    bool isManagedFile (const juce::File& f) const;
+
+    /** Deletes managed files (with their sidecars) and unindexes them.
+        Returns how many were deleted; unmanaged paths are skipped. */
+    int deleteFiles (const juce::StringArray& paths, int& skipped);
+
+    /** Moves Foundry-made files into `dir`, copies everything else (your own
+        samples are never moved), and indexes the results. */
+    int moveOrCopyFiles (const juce::StringArray& paths, const juce::File& dir, int& copied, juce::String& error);
+
+    bool addUserFolder (const juce::File& dir, juce::String& error);
+    void removeUserFolder (const juce::File& dir);
+
     double getHostBpm() const noexcept { return hostBpm.load(); }
     double getSampleRate() const noexcept { return currentSr.load(); }
 
@@ -166,7 +195,11 @@ private:
     juce::String lastRenderKey;
     juce::File lastRenderFile;
 
+    void migrateLegacyPatterns();
+
     foundry::DrumPattern drumPattern;
+    foundry::DrumPattern bassPattern;
+    std::array<foundry::SampleLock, 4> bassLocks {};
     foundry::SampleLock locks[4];
     foundry::Genre uiGenre = foundry::Genre::Riddim;
     int uiBars = 2;

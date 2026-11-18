@@ -38,6 +38,15 @@ public:
         folder before a root is chosen, and is created on demand. */
     juce::File riffDir() const;
 
+    /** Pattern library: <root>/Patterns, with Drums and Bass inside. */
+    juce::File patternsRoot() const;
+    juce::File patternDir (bool bass) const;
+
+    /** Top-level folders of the batch generators (parents of the per-genre /
+        per-type folders), whether mapped or defaulted. */
+    juce::File generatedDrumsRoot() const;
+    juce::File generatedBassRoot() const;
+
     double resolveBpm (Genre g, double hostBpm) const;
     double resolveRenderSampleRate (double hostSr) const;
 

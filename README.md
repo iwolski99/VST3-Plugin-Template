@@ -8,8 +8,9 @@ slide where each one starts, choose how long each one lasts, lock the keepers
 and roll the dice on the rest. When it slaps, **RENDER** saves it as a WAV in
 *My Riffs*, or grab **DRAG TO DAW** and drop it straight onto your playlist.
 
-The original batch tools (Riddim / Dubstep drum loops, bass riffs and the riff
-splicer) are still here, on the **Generator** tab.
+The batch tools (Riddim / Dubstep drum loops, bass riffs and the riff splicer)
+live on the **Generator** tab, and every loop they make can be reopened and
+edited as a pattern.
 
 No cloud. No subscription. Your sounds in. Ideas out.
 
@@ -67,37 +68,92 @@ No cloud. No subscription. Your sounds in. Ideas out.
 
 A game-engine-style asset dock along the bottom: square tiles with a waveform
 thumbnail and the sample's **name under every tile**, plus a **LIST** view
-when you'd rather see more names at once.
+when you'd rather see more names at once. Drag the bar above it to make the
+dock taller or shorter.
 
-- Curated folders at the top, mapped from Settings: **Favourites**,
-  **Drums** (Kicks, Snares, Claps, Hats, Rides), **Bass**, **My Riffs** and
-  **Generated**. Inside those you browse your real sub-folders, with a
-  clickable breadcrumb and an up button.
+**Folders.** The top level shows:
+
+| Folder | What's in it |
+|---|---|
+| **Favourites** | Everything you've starred |
+| **Drums** | Kicks, Snares, Claps, Hats, Rides (your sample folders from Settings) |
+| **Bass** | Your bass one-shots |
+| **My Riffs** | Handcrafted riffs rendered from the Riff Maker |
+| **Batch Generated** | Everything the Generator makes, kept apart from your handcrafted work |
+| **Patterns** | Saved drum and bass patterns |
+| *your folders* | Any folder you add with **+ FOLDER** (or the *Add folder* tile) |
+
+Inside those you browse the real sub-folders, with a clickable breadcrumb and
+an up button. **+ FOLDER** also creates new folders. **FOLDERS / FLAT**
+hides the folder tiles and lists every sample in the current folder and
+below in one flat view, so *Drums* in flat view is every drum sound at once.
+
+**Using samples.**
+
 - **Click** a sample to hear it. **Drag** it onto a slot. **Double-click** to
-  drop it into the next empty slot. Right-click for favourites, *Load into
-  slot*, *Send to Splicer*, *Lock in Drum Generator* and *Show in Explorer*.
-- Drag a tile **out of the plugin** to drop the file into the DAW.
-- You can also drag audio files from Explorer/Finder straight onto a slot.
-  Drop several and they fill that slot and the ones after it.
+  drop it into the next empty slot (or reopen a riff or loop for editing).
+- **Ctrl/Cmd-click** and **Shift-click** select several (Ctrl/Cmd+A selects
+  all). Drag a selection onto a slot to fill that slot and the ones after it,
+  out of the plugin into the DAW, or onto a **folder tile** to file it there.
+- Drag files from Explorer/Finder into the browser to copy them into the
+  open folder (or onto a folder tile), or straight onto a slot.
 - **Search** is instant and never touches the disk: it queries the library
-  index, so a huge sample collection doesn't stall the DAW. It searches the
-  open folder and everything below it (or the whole library from the top).
-- Thumbnails are drawn in the background and cached in the library database,
-  so a folder you've opened once draws instantly next time.
-- WAV, AIFF, FLAC and Ogg files are indexed. Renders are always 24-bit WAV.
-- New files show up after **RESCAN** (or *Refresh Library* in Settings).
+  index, so a huge sample collection doesn't stall the DAW.
+- Thumbnails are drawn in the background and cached, so a folder you've
+  opened once draws instantly next time.
+- WAV, AIFF, FLAC and Ogg are indexed. New files appear after **RESCAN**.
+
+**Culling a batch.** Generate 50 loops, open the batch folder, then:
+
+1. Use the **arrow keys** to step through. Each one plays as you land on it.
+2. Press **F** to star the keepers.
+3. Right-click the background → **Keep favourites, delete the rest**.
+
+Or select several and press **Delete**. Deleting always asks first, and
+**Foundry only deletes files it made** (Batch Generated, My Riffs, Patterns).
+Your own sample folders are never deleted from here. Moving files works the
+same way: Foundry's own files *move*, your samples are only ever *copied*.
+
+## Patterns: edit a loop after it's made
+
+Every drum and bass loop the Generator renders saves its **pattern and the
+samples it used** right next to the WAV. Found a loop with great sounds but
+the wrong groove? **Double-click it** (or right-click → *Edit pattern in
+Generator*): the sequencer opens with its exact pattern and those sounds
+locked. Fix the groove and hit GENERATE (quantity 1 remakes just that loop
+with your changes).
+
+Patterns are also their own reusable thing, like MIDI clips:
+
+- **SAVE PATTERN** on the Drum Loops or Bass Riffs page saves the grid into
+  *Patterns › Drums* or *Patterns › Bass*, where it shows as a tile with a
+  mini step-grid preview.
+- **Double-click a pattern tile** to open it in the sequencer, or pick one
+  from the *Load pattern…* list.
+- Right-click a generated loop → *Save its pattern to Patterns* to keep a
+  groove you liked as a reusable pattern.
 
 ## The Generator tab
 
-The original Foundry tools, unchanged in what they do:
-
 - **Drum Loops**: a 4-row step pattern (kick, clap, hat, ride) rendered into
   1–50 loops using random or locked samples, as full loops and/or stems.
-- **Bass Riffs**: sequences 2–4 of your bass one-shots into rhythmic phrases.
+- **Bass Riffs**: two modes. **TEMPLATES** rolls Foundry's rhythm templates
+  as before. **MY PATTERN** plays the grid you draw, where rows A–D are the
+  bass sources (one per step, like a bass line). Lock any source to a sample
+  you like (right-click a bass sample in the browser → *Lock as bass
+  source*) and only the unlocked sources change between loops.
 - **Splicer**: slices 2–4 bass loops and recombines them into new variations.
 
-When a batch finishes, the browser opens its output folder so the new loops
-are right there to preview, drag into the DAW, or drop into a Riff Maker slot.
+Batch output always goes to **Batch Generated**. When a batch finishes, the
+browser opens its output folder so you can audition and cull right away.
+
+## Window and themes
+
+- The window is **resizable**: drag the corner. The slots and the browser
+  grid reflow to use the space. **ZOOM** (bottom right) scales the whole
+  interface on top of that, for high-resolution screens.
+- **Settings → Theme**: Orange (the original), Purple, Green, Blue or Red.
+  Your choice is saved as the default for every Foundry you open.
 
 ## Clone and build (Windows)
 
@@ -164,7 +220,9 @@ a DAW the tempo always comes from the host.
 
 1. Open **Settings** and choose a root library folder.
 2. Click **Create Recommended Structure**, or map your existing Kick / Snare /
-   Clap / Hat / Ride / Bass folders. *My Riffs* defaults to `<root>/Riffs`.
+   Clap / Hat / Ride / Bass folders. *My Riffs* defaults to `<root>/Riffs`
+   and patterns to `<root>/Patterns`. Add any other folders straight from
+   the browser with **+ FOLDER**.
 3. Put samples in those folders and press **RESCAN** in the browser.
 4. Open **Bass** (or any folder), drag samples into the slots, and press PLAY.
 
@@ -177,10 +235,13 @@ cmake --build build --config Release --target FoundryEngineTest FoundryPlaybackT
 
 - `FoundryEngineTest`: offline generation, database, and the Riff Maker
   engine: grid timing, slice lengths, start offsets, ring-through and cut-off,
-  seamless loop renders, browser folders / search / favourites, thumbnails.
+  seamless loop renders, browser folders / search / favourites / flat view /
+  your own folders / Patterns, thumbnails, the pattern saved with every
+  generated loop, and bass pattern mode with locked sources.
 - `FoundryPlaybackTest`: drives the processor the way a host does: preview,
   MIDI, host transport (including starting mid-riff), sample-rate changes,
-  undo/redo, dice, render and reopen, session save/restore.
+  undo/redo, dice, render and reopen, delete only Foundry's own files, move
+  vs copy, pattern save/load, session save/restore.
 - `FoundryLifecycleTest`: repeated construct / run / destroy cycles.
 - `FoundryScreenshot <dir>`: renders the editor to PNGs with a demo library,
   for checking the layout (run under `xvfb-run` on a headless Linux box).

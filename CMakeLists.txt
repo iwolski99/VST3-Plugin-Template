@@ -103,6 +103,7 @@ set(FOUNDRY_SOURCES
     Source/Core/Generators.cpp
     Source/Core/JobWorker.cpp
     Source/Core/RiffTypes.cpp
+    Source/Core/Patterns.cpp
     Source/Core/SampleCache.cpp
     Source/Core/RiffEngine.cpp
     Source/Core/ThumbnailCache.cpp
@@ -181,6 +182,7 @@ if(FOUNDRY_BUILD_TESTS)
         Source/Core/Generators.cpp
         Source/Core/JobWorker.cpp
         Source/Core/RiffTypes.cpp
+        Source/Core/Patterns.cpp
         Source/Core/SampleCache.cpp
         Source/Core/RiffEngine.cpp
         Source/Core/ThumbnailCache.cpp

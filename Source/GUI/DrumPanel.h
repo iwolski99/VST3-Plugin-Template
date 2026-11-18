@@ -17,6 +17,10 @@ public:
     void setTheme (const Theme& t);
     void syncFromProcessor();
     void applyLock (const foundry::LibraryItem& item);
+    void applyPatternFile (const foundry::PatternFile& pf, const juce::String& name);
+    void refreshPatternList();
+
+    std::function<void()> onPatternsChanged;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -40,6 +44,7 @@ private:
     juce::TextButton saveDefaultButton { "SAVE DEFAULT" };
     juce::TextButton savePatternButton { "SAVE PATTERN" };
     juce::ComboBox loadPatternBox;
+    juce::Array<juce::File> patternFiles;
     juce::TextButton lockButtons[4];
     juce::Label lockLabels[4];
     StatusBanner banner;

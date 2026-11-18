@@ -28,7 +28,7 @@ namespace
 
     juce::String groupTitle (const juce::String& g)
     {
-        return g == "drums" ? "Drums" : g == "generated" ? "Generated" : g;
+        return g == "drums" ? "Drums" : g == "generated" ? "Batch Generated" : g;
     }
 
     bool isInside (const juce::String& path, const juce::String& dir)
@@ -40,6 +40,11 @@ namespace
             prefix += juce::File::getSeparatorString();
         return path == dir || path.startsWith (prefix);
     }
+
+    bool byNaturalName (const BrowserEntry& a, const BrowserEntry& b)
+    {
+        return a.name.compareNatural (b.name) < 0;
+    }
 }
 
 BrowserModel::BrowserModel (ConfigStore& c, LibraryDatabase& d) : config (c), db (d) {}
@@ -50,6 +55,29 @@ BrowserLocation BrowserModel::root()
     l.kind = BrowserLocation::Kind::Root;
     l.title = "Library";
     return l;
+}
+
+BrowserLocation BrowserModel::folder (const juce::File& dir, const juce::String& title)
+{
+    BrowserLocation l;
+    l.kind = BrowserLocation::Kind::Folder;
+    l.dir = dir.getFullPathName();
+    l.title = title.isNotEmpty() ? title : dir.getFileName();
+    return l;
+}
+
+BrowserEntry BrowserModel::fileEntry (LibraryItem it)
+{
+    BrowserEntry e;
+    e.type = BrowserEntry::Type::File;
+    e.name = juce::File (it.path).getFileNameWithoutExtension();
+    e.item = std::move (it);
+    return e;
+}
+
+bool BrowserModel::isPatternLocation (const BrowserLocation& where) const
+{
+    return where.isRealFolder() && isInside (where.dir, config.patternsRoot().getFullPathName());
 }
 
 juce::File BrowserModel::dirForRole (FolderRole role) const
@@ -84,9 +112,7 @@ BrowserEntry BrowserModel::roleFolder (FolderRole role, const juce::String& name
         return e;
     }
 
-    e.target.kind = BrowserLocation::Kind::Folder;
-    e.target.dir = dir.getFullPathName();
-    e.target.title = name;
+    e.target = folder (dir, name);
     e.count = db.countUnderFolder (e.target.dir);
     return e;
 }
@@ -105,6 +131,20 @@ std::vector<BrowserEntry> BrowserModel::rootEntries() const
 {
     std::vector<BrowserEntry> out;
 
+    auto groupEntry = [this] (const juce::String& g, BrowserEntry::Icon icon)
+    {
+        BrowserEntry e;
+        e.type = BrowserEntry::Type::Folder;
+        e.name = groupTitle (g);
+        e.icon = icon;
+        e.target.kind = BrowserLocation::Kind::Group;
+        e.target.group = g;
+        e.target.title = e.name;
+        for (const auto& d : groupDirs (g))
+            e.count += db.countUnderFolder (d.getFullPathName());
+        return e;
+    };
+
     BrowserEntry fav;
     fav.type = BrowserEntry::Type::Folder;
     fav.name = "Favourites";
@@ -114,33 +154,40 @@ std::vector<BrowserEntry> BrowserModel::rootEntries() const
     fav.count = db.countFavourites();
     out.push_back (fav);
 
-    for (const juce::String g : { "drums" })
+    out.push_back (groupEntry ("drums", BrowserEntry::Icon::Drums));
+    out.push_back (roleFolder (FolderRole::Bass, "Bass", BrowserEntry::Icon::Bass));
+    out.push_back (roleFolder (FolderRole::Riffs, "My Riffs", BrowserEntry::Icon::Riffs));
+    out.push_back (groupEntry ("generated", BrowserEntry::Icon::Generated));
+
+    BrowserEntry pat;
+    pat.type = BrowserEntry::Type::Folder;
+    pat.name = "Patterns";
+    pat.icon = BrowserEntry::Icon::Patterns;
+    pat.target = folder (config.patternsRoot(), "Patterns");
+    pat.count = config.patternsRoot().getNumberOfChildFiles (juce::File::findFiles | juce::File::ignoreHiddenFiles,
+                                                              juce::String ("*") + kPatternExtension);
+    pat.count += config.patternDir (false).getNumberOfChildFiles (juce::File::findFiles, juce::String ("*") + kPatternExtension);
+    pat.count += config.patternDir (true).getNumberOfChildFiles (juce::File::findFiles, juce::String ("*") + kPatternExtension);
+    out.push_back (pat);
+
+    for (const auto& path : config.get().userFolders)
     {
+        const juce::File dir (path);
         BrowserEntry e;
         e.type = BrowserEntry::Type::Folder;
-        e.name = groupTitle (g);
-        e.icon = BrowserEntry::Icon::Drums;
-        e.target.kind = BrowserLocation::Kind::Group;
-        e.target.group = g;
-        e.target.title = e.name;
-        for (const auto& d : groupDirs (g))
-            e.count += db.countUnderFolder (d.getFullPathName());
+        e.name = dir.getFileName();
+        e.icon = BrowserEntry::Icon::Custom;
+        e.custom = true;
+        e.unmapped = ! dir.isDirectory();
+        e.target = folder (dir);
+        e.count = db.countUnderFolder (path);
         out.push_back (e);
     }
 
-    out.push_back (roleFolder (FolderRole::Bass, "Bass", BrowserEntry::Icon::Bass));
-    out.push_back (roleFolder (FolderRole::Riffs, "My Riffs", BrowserEntry::Icon::Riffs));
-
-    BrowserEntry gen;
-    gen.type = BrowserEntry::Type::Folder;
-    gen.name = groupTitle ("generated");
-    gen.icon = BrowserEntry::Icon::Generated;
-    gen.target.kind = BrowserLocation::Kind::Group;
-    gen.target.group = "generated";
-    gen.target.title = gen.name;
-    for (const auto& d : groupDirs ("generated"))
-        gen.count += db.countUnderFolder (d.getFullPathName());
-    out.push_back (gen);
+    BrowserEntry add;
+    add.type = BrowserEntry::Type::AddFolder;
+    add.name = "Add folder";
+    out.push_back (add);
 
     return out;
 }
@@ -154,6 +201,44 @@ std::vector<BrowserEntry> BrowserModel::groupEntries (const juce::String& group)
     return out;
 }
 
+std::vector<BrowserEntry> BrowserModel::patternEntries (const juce::File& dir, const juce::String& search,
+                                                         bool recursive) const
+{
+    std::vector<BrowserEntry> folders, files;
+    const auto wildcard = juce::String ("*") + kPatternExtension;
+
+    if (! recursive)
+    {
+        for (const auto& sub : dir.findChildFiles (juce::File::findDirectories | juce::File::ignoreHiddenFiles, false))
+        {
+            BrowserEntry e;
+            e.type = BrowserEntry::Type::Folder;
+            e.name = sub.getFileName();
+            e.icon = BrowserEntry::Icon::Patterns;
+            e.target = folder (sub);
+            e.count = sub.getNumberOfChildFiles (juce::File::findFiles, wildcard);
+            folders.push_back (e);
+        }
+    }
+
+    for (const auto& f : dir.findChildFiles (juce::File::findFiles | juce::File::ignoreHiddenFiles, recursive, wildcard))
+    {
+        if (search.trim().isNotEmpty() && ! f.getFileNameWithoutExtension().containsIgnoreCase (search.trim()))
+            continue;
+        BrowserEntry e;
+        e.type = BrowserEntry::Type::Pattern;
+        e.name = f.getFileNameWithoutExtension();
+        e.item.path = f.getFullPathName();
+        e.item.filename = f.getFileName();
+        files.push_back (e);
+    }
+
+    std::sort (folders.begin(), folders.end(), byNaturalName);
+    std::sort (files.begin(), files.end(), byNaturalName);
+    folders.insert (folders.end(), files.begin(), files.end());
+    return folders;
+}
+
 std::vector<BrowserEntry> BrowserModel::folderEntries (const juce::String& dir) const
 {
     std::vector<BrowserEntry> folders, files;
@@ -162,7 +247,7 @@ std::vector<BrowserEntry> BrowserModel::folderEntries (const juce::String& dir) 
     if (! prefix.endsWithChar (juce::File::getSeparatorChar()))
         prefix += juce::File::getSeparatorString();
 
-    std::map<juce::String, int> subCounts;   // sorted, case-sensitive; re-sorted below
+    std::map<juce::String, int> subCounts;
 
     for (auto& it : db.queryUnderFolder (dir, {}, 0))
     {
@@ -174,13 +259,12 @@ std::vector<BrowserEntry> BrowserModel::folderEntries (const juce::String& dir) 
             ++subCounts[rel.substring (0, sep)];
             continue;
         }
-
-        BrowserEntry e;
-        e.type = BrowserEntry::Type::File;
-        e.name = juce::File (it.path).getFileNameWithoutExtension();
-        e.item = std::move (it);
-        files.push_back (std::move (e));
+        files.push_back (fileEntry (std::move (it)));
     }
+
+    // Empty sub-folders (e.g. one you just created) are worth showing too.
+    for (const auto& sub : juce::File (dir).findChildFiles (juce::File::findDirectories | juce::File::ignoreHiddenFiles, false))
+        subCounts.emplace (sub.getFileName(), 0);
 
     for (const auto& [name, count] : subCounts)
     {
@@ -189,26 +273,25 @@ std::vector<BrowserEntry> BrowserModel::folderEntries (const juce::String& dir) 
         e.name = name;
         e.icon = BrowserEntry::Icon::Folder;
         e.count = count;
-        e.target.kind = BrowserLocation::Kind::Folder;
-        e.target.dir = prefix + name;
-        e.target.title = name;
+        e.target = folder (juce::File (prefix + name), name);
         folders.push_back (std::move (e));
     }
 
-    std::sort (folders.begin(), folders.end(),
-               [] (const BrowserEntry& a, const BrowserEntry& b) { return a.name.compareNatural (b.name) < 0; });
-
+    std::sort (folders.begin(), folders.end(), byNaturalName);
     folders.insert (folders.end(), std::make_move_iterator (files.begin()), std::make_move_iterator (files.end()));
     return folders;
 }
 
 std::vector<BrowserEntry> BrowserModel::list (const BrowserLocation& where, const juce::String& search,
-                                              bool& truncated) const
+                                              bool showFolders, bool& truncated) const
 {
     truncated = false;
     const bool searching = search.trim().isNotEmpty();
 
-    if (! searching)
+    if (isPatternLocation (where))
+        return patternEntries (juce::File (where.dir), search, searching || ! showFolders);
+
+    if (! searching && showFolders)
     {
         switch (where.kind)
         {
@@ -220,42 +303,39 @@ std::vector<BrowserEntry> BrowserModel::list (const BrowserLocation& where, cons
         }
     }
 
-    // Favourites, or a search: a flat list of files.
+    // Favourites, a search, or folders hidden: a flat list of files.
+    const int limit = searching ? kSearchLimit : kFlatLimit;
     std::vector<LibraryItem> items;
     switch (where.kind)
     {
         case BrowserLocation::Kind::Favourites:
-            items = db.queryFavourites (search, searching ? kSearchLimit : 0);
+            items = db.queryFavourites (search, limit);
             break;
         case BrowserLocation::Kind::Folder:
-            items = db.queryUnderFolder (where.dir, search, kSearchLimit);
+            items = db.queryUnderFolder (where.dir, search, limit);
             break;
         case BrowserLocation::Kind::Group:
             for (const auto& d : groupDirs (where.group))
             {
-                auto part = db.queryUnderFolder (d.getFullPathName(), search, kSearchLimit);
+                auto part = db.queryUnderFolder (d.getFullPathName(), search, limit);
                 items.insert (items.end(), part.begin(), part.end());
             }
             break;
         case BrowserLocation::Kind::Root:
-            items = db.queryUnderFolder ({}, search, kSearchLimit);
+            items = db.queryUnderFolder ({}, search, limit);
             break;
     }
 
-    truncated = searching && (int) items.size() >= kSearchLimit;
-    if ((int) items.size() > kSearchLimit && searching)
-        items.resize ((size_t) kSearchLimit);
+    truncated = (int) items.size() >= limit;
+    if ((int) items.size() > limit)
+        items.resize ((size_t) limit);
 
     std::vector<BrowserEntry> out;
     out.reserve (items.size());
     for (auto& it : items)
-    {
-        BrowserEntry e;
-        e.type = BrowserEntry::Type::File;
-        e.name = juce::File (it.path).getFileNameWithoutExtension();
-        e.item = std::move (it);
-        out.push_back (std::move (e));
-    }
+        out.push_back (fileEntry (std::move (it)));
+
+    std::sort (out.begin(), out.end(), byNaturalName);
     return out;
 }
 
@@ -293,18 +373,20 @@ std::vector<BrowserLocation> BrowserModel::pathTo (const BrowserLocation& where)
         return crumbs;
     }
 
-    // Folder: find the curated library folder it lives in (deepest match wins).
-    const CuratedFolder* best = nullptr;
-    juce::String bestDir;
+    // Folder: find the top-level browser folder it lives in (deepest match wins).
+    struct Top { juce::String dir, name, group; };
+    std::vector<Top> tops;
     for (const auto& c : kCurated)
-    {
-        const auto d = dirForRole (c.role).getFullPathName();
-        if (d.isNotEmpty() && isInside (where.dir, d) && d.length() > bestDir.length())
-        {
-            best = &c;
-            bestDir = d;
-        }
-    }
+        if (auto d = dirForRole (c.role).getFullPathName(); d.isNotEmpty())
+            tops.push_back ({ d, c.name, c.group });
+    tops.push_back ({ config.patternsRoot().getFullPathName(), "Patterns", {} });
+    for (const auto& u : config.get().userFolders)
+        tops.push_back ({ u, juce::File (u).getFileName(), {} });
+
+    const Top* best = nullptr;
+    for (const auto& t : tops)
+        if (isInside (where.dir, t.dir) && (best == nullptr || t.dir.length() > best->dir.length()))
+            best = &t;
 
     if (best == nullptr)
     {
@@ -312,7 +394,7 @@ std::vector<BrowserLocation> BrowserModel::pathTo (const BrowserLocation& where)
         return crumbs;
     }
 
-    if (juce::String (best->group).isNotEmpty())
+    if (best->group.isNotEmpty())
     {
         BrowserLocation g;
         g.kind = BrowserLocation::Kind::Group;
@@ -321,24 +403,16 @@ std::vector<BrowserLocation> BrowserModel::pathTo (const BrowserLocation& where)
         crumbs.push_back (g);
     }
 
-    BrowserLocation top;
-    top.kind = BrowserLocation::Kind::Folder;
-    top.dir = bestDir;
-    top.title = best->name;
-    crumbs.push_back (top);
+    crumbs.push_back (folder (juce::File (best->dir), best->name));
 
-    auto rest = where.dir.substring (bestDir.length());
-    auto dir = juce::File (bestDir);
+    auto rest = where.dir.substring (best->dir.length());
+    auto dir = juce::File (best->dir);
     for (const auto& part : juce::StringArray::fromTokens (rest, juce::File::getSeparatorString(), {}))
     {
         if (part.isEmpty())
             continue;
         dir = dir.getChildFile (part);
-        BrowserLocation l;
-        l.kind = BrowserLocation::Kind::Folder;
-        l.dir = dir.getFullPathName();
-        l.title = part;
-        crumbs.push_back (l);
+        crumbs.push_back (folder (dir, part));
     }
 
     return crumbs;

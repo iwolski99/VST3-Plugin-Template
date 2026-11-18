@@ -13,6 +13,45 @@ namespace
     }
 }
 
+/** The bar between the page and the sample dock: drag it to give the browser
+    more or less room, like resizing a dock in a game engine. */
+class FoundryAudioProcessorEditor::Splitter : public juce::Component,
+                                              public juce::SettableTooltipClient
+{
+public:
+    explicit Splitter (FoundryAudioProcessorEditor& o) : owner (o)
+    {
+        setMouseCursor (juce::MouseCursor::UpDownResizeCursor);
+        setRepaintsOnMouseActivity (true);
+        setTooltip ("Drag to resize the sample browser");
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto& t = pt::getTheme();
+        auto r = getLocalBounds().toFloat().withSizeKeepingCentre (60.0f, 3.0f);
+        g.setColour ((isMouseOverOrDragging() ? t.accent : t.panelEdge).withAlpha (0.9f));
+        g.fillRoundedRectangle (r, 1.5f);
+    }
+
+    void mouseDown (const juce::MouseEvent&) override { startHeight = owner.browserHeight; }
+
+    void mouseDrag (const juce::MouseEvent& e) override
+    {
+        owner.browserHeight = startHeight - e.getDistanceFromDragStartY();
+        owner.resized();
+    }
+
+    void mouseUp (const juce::MouseEvent&) override
+    {
+        owner.processor.getConfig().get().browserHeight = owner.browserHeight;
+    }
+
+private:
+    FoundryAudioProcessorEditor& owner;
+    int startHeight = 0;
+};
+
 FoundryAudioProcessorEditor::FoundryAudioProcessorEditor (FoundryAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processor (p),
@@ -23,8 +62,12 @@ FoundryAudioProcessorEditor::FoundryAudioProcessorEditor (FoundryAudioProcessor&
       footer (p),
       overlay (p.getWorker())
 {
+    pt::setCurrentTheme (p.getConfig().get().themeName);
     setLookAndFeel (&lookAndFeel);
     setWantsKeyboardFocus (true);
+
+    splitter = std::make_unique<Splitter> (*this);
+    browserHeight = p.getConfig().get().browserHeight;
 
     addAndMakeVisible (content);
     content.addAndMakeVisible (header);
@@ -33,6 +76,7 @@ FoundryAudioProcessorEditor::FoundryAudioProcessorEditor (FoundryAudioProcessor&
     content.addChildComponent (generatorPanel);
     content.addChildComponent (settingsPanel);
     content.addAndMakeVisible (browser);
+    content.addAndMakeVisible (*splitter);
     content.addAndMakeVisible (footer);
     content.addChildComponent (banner);
     content.addChildComponent (overlay);
@@ -61,6 +105,18 @@ FoundryAudioProcessorEditor::FoundryAudioProcessorEditor (FoundryAudioProcessor&
         else
             riffPanel.showMessage (err, true);
     };
+    browser.onOpenPattern = [this] (const juce::File& f) { openPattern (f); };
+    browser.onLockBassSource = [this] (int row, const foundry::LibraryItem& it)
+    {
+        showTab (generatorTab);
+        generatorPanel.showPage (pt::GeneratorPanel::bass);
+        generatorPanel.bassPanel.applyLock (row, it);
+    };
+    browser.onFilesChanged = [this] { riffPanel.syncFromProcessor(); };
+    generatorPanel.drumPanel.onPatternsChanged = [this] { browser.refresh(); };
+    generatorPanel.bassPanel.onPatternsChanged = [this] { browser.refresh(); };
+    settingsPanel.onThemeChanged = [this] (const juce::String& name) { applyThemeByName (name); };
+
     browser.onMessage = [this] (const juce::String& m, bool isError)
     {
         banner.setMessage (m, isError, isError && m.containsIgnoreCase ("Settings"));
@@ -101,8 +157,56 @@ FoundryAudioProcessorEditor::FoundryAudioProcessorEditor (FoundryAudioProcessor&
     applyTheme (pt::getTheme());
     showTab (juce::jlimit (0, 1, p.getConfig().get().lastTab));
 
-    setResizable (false, false);
-    setZoomPercent (clampZoomToDisplay (loadStoredZoom()), false);
+    // Resizable: the window can be any size above a minimum; ZOOM scales the
+    // whole interface on top of that (handy on high-resolution screens).
+    setResizable (true, true);
+    zoomPercent = clampZoomToDisplay (loadStoredZoom());
+    footer.setZoomPercent (zoomPercent);
+    updateResizeLimits();
+
+    const auto& cfg = p.getConfig().get();
+    const int logicalW = cfg.uiWidth  >= kMinWidth  ? cfg.uiWidth  : kBaseWidth;
+    const int logicalH = cfg.uiHeight >= kMinHeight ? cfg.uiHeight : kBaseHeight;
+    setSize (juce::roundToInt ((float) logicalW * scale()), juce::roundToInt ((float) logicalH * scale()));
+}
+
+void FoundryAudioProcessorEditor::updateResizeLimits()
+{
+    setResizeLimits (juce::roundToInt ((float) kMinWidth * scale()), juce::roundToInt ((float) kMinHeight * scale()),
+                     8000, 6000);
+}
+
+void FoundryAudioProcessorEditor::applyThemeByName (const juce::String& name)
+{
+    pt::setCurrentTheme (name);
+    applyTheme (pt::getTheme());
+    content.repaint();
+    repaint();
+}
+
+void FoundryAudioProcessorEditor::openPattern (const juce::File& file)
+{
+    foundry::PatternFile pf;
+    juce::String err;
+    if (! processor.loadPattern (file, pf, err))
+    {
+        banner.setMessage (err, true, false);
+        resized();
+        return;
+    }
+
+    showTab (generatorTab);
+    const auto name = file.getFileNameWithoutExtension();
+    if (pf.kind == foundry::PatternKind::Bass)
+    {
+        generatorPanel.showPage (pt::GeneratorPanel::bass);
+        generatorPanel.bassPanel.applyPatternFile (pf, name);
+    }
+    else
+    {
+        generatorPanel.showPage (pt::GeneratorPanel::drums);
+        generatorPanel.drumPanel.applyPatternFile (pf, name);
+    }
 }
 
 FoundryAudioProcessorEditor::~FoundryAudioProcessorEditor()
@@ -146,6 +250,7 @@ void FoundryAudioProcessorEditor::showSettings (bool show)
     settingsOpen = show;
     settingsPanel.setVisible (show);
     browser.setVisible (! show);
+    splitter->setVisible (! show);
     riffPanel.setVisible (! show && currentTab == riffMakerTab);
     generatorPanel.setVisible (! show && currentTab == generatorTab);
 
@@ -175,11 +280,10 @@ bool FoundryAudioProcessorEditor::shouldDropFilesWhenDraggedExternally (const ju
 
     if (desc.startsWith (pt::dnd::samplePrefix))
     {
-        const juce::File f (desc.fromFirstOccurrenceOf (pt::dnd::samplePrefix, false, false));
-        if (! f.existsAsFile())
-            return false;
-        files.add (f.getFullPathName());
-        return true;
+        for (const auto& path : pt::dnd::pathsFrom (desc))
+            if (juce::File (path).existsAsFile() && foundry::isSupportedAudioFile (juce::File (path)))
+                files.add (path);
+        return ! files.isEmpty();
     }
 
     if (desc == pt::dnd::riff)
@@ -281,8 +385,8 @@ int FoundryAudioProcessorEditor::clampZoomToDisplay (int percent) const
         while (idx > 0)
         {
             const float scale = (float) options[idx] / 100.0f;
-            const int w = juce::roundToInt (kBaseWidth * scale);
-            const int h = juce::roundToInt (kBaseHeight * scale);
+            const int w = juce::roundToInt (kMinWidth * scale);
+            const int h = juce::roundToInt (kMinHeight * scale);
             if (w <= area.getWidth() - 40 && h <= area.getHeight() - 80)
                 break;
             --idx;
@@ -294,12 +398,16 @@ int FoundryAudioProcessorEditor::clampZoomToDisplay (int percent) const
 
 void FoundryAudioProcessorEditor::setZoomPercent (int percent, bool store)
 {
+    // Keep the logical layout, scale everything.
+    const float oldScale = scale();
+    const int logicalW = juce::roundToInt ((float) getWidth() / oldScale);
+    const int logicalH = juce::roundToInt ((float) getHeight() / oldScale);
+
     zoomPercent = percent;
-    const float scale = (float) zoomPercent / 100.0f;
-    content.setBounds (0, 0, kBaseWidth, kBaseHeight);
-    content.setTransform (juce::AffineTransform::scale (scale));
-    setSize (juce::roundToInt (kBaseWidth * scale), juce::roundToInt (kBaseHeight * scale));
     footer.setZoomPercent (zoomPercent);
+    updateResizeLimits();
+    setSize (juce::roundToInt ((float) juce::jmax (kMinWidth, logicalW) * scale()),
+             juce::roundToInt ((float) juce::jmax (kMinHeight, logicalH) * scale()));
 
     if (store)
         storeZoom (zoomPercent);
@@ -307,6 +415,16 @@ void FoundryAudioProcessorEditor::setZoomPercent (int percent, bool store)
 
 void FoundryAudioProcessorEditor::resized()
 {
+    const int logicalW = juce::jmax (kMinWidth, juce::roundToInt ((float) getWidth() / scale()));
+    const int logicalH = juce::jmax (kMinHeight, juce::roundToInt ((float) getHeight() / scale()));
+    content.setTransform ({});
+    content.setBounds (0, 0, logicalW, logicalH);
+    content.setTransform (juce::AffineTransform::scale (scale()));
+
+    auto& cfg = processor.getConfig().get();
+    cfg.uiWidth = logicalW;
+    cfg.uiHeight = logicalH;
+
     auto b = content.getLocalBounds();
 
     auto head = b.removeFromTop (kHeaderH);
@@ -321,7 +439,10 @@ void FoundryAudioProcessorEditor::resized()
     }
     else
     {
-        browser.setBounds (b.removeFromBottom (kBrowserH).reduced (6, 2));
+        browserHeight = juce::jlimit (kMinBrowserH, juce::jmax (kMinBrowserH, b.getHeight() - kMinMainH - kSplitterH),
+                                      browserHeight);
+        browser.setBounds (b.removeFromBottom (browserHeight).reduced (6, 2));
+        splitter->setBounds (b.removeFromBottom (kSplitterH));
         if (banner.isVisible())
             banner.setBounds (b.removeFromTop (32).reduced (10, 4));
         riffPanel.setBounds (b);

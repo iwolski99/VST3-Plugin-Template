@@ -502,7 +502,8 @@ public:
 
         if (desc.startsWith (dnd::samplePrefix))
         {
-            owner.loadIntoSlot (index, juce::File (desc.fromFirstOccurrenceOf (dnd::samplePrefix, false, false)));
+            // One sample replaces this slot; several fill this slot and the ones after it.
+            owner.loadFilesFrom (index, dnd::pathsFrom (desc));
         }
         else if (desc.startsWith (dnd::slotPrefix))
         {

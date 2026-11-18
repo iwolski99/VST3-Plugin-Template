@@ -35,6 +35,8 @@ void GeneratorPanel::showPage (int newPage)
 
     if (page == drums)
         drumPanel.syncFromProcessor();
+    if (page == bass)
+        bassPanel.syncFromProcessor();
     if (page == splicer)
         splicerPanel.refresh();
 }

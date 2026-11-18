@@ -159,4 +159,20 @@ private:
     Theme theme { getTheme() };
 };
 
+/** Asks for a name in a small async dialog (plugins can't run modal loops). */
+inline void askForName (const juce::String& title, const juce::String& message, const juce::String& initial,
+                        std::function<void (const juce::String&)> onOk)
+{
+    auto* w = new juce::AlertWindow (title, message, juce::MessageBoxIconType::NoIcon);
+    w->addTextEditor ("name", initial);
+    w->addButton ("OK", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    w->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    w->enterModalState (true, juce::ModalCallbackFunction::create ([w, onOk] (int result)
+    {
+        const auto text = w->getTextEditorContents ("name").trim();
+        if (result == 1 && text.isNotEmpty() && onOk)
+            onOk (text);
+    }), true);
+}
+
 } // namespace pt

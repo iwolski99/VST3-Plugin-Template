@@ -131,6 +131,12 @@ struct AppConfig
     int       uiZoom           = 100;
     int       lastTab          = 0;   // 0 = Riff Maker, 1 = Generator
     bool      browserListView  = false;
+    bool      browserShowFolders = true;
+    int       browserHeight    = 240;   // logical px of the sample dock
+    int       uiWidth          = 0;     // logical editor size; 0 = default
+    int       uiHeight         = 0;
+    juce::String themeName     { "Orange" };
+    juce::StringArray userFolders;      // extra folders added in the browser
     juce::String savedDrumPatternJson;
     juce::StringArray customPatternNames;
     juce::StringArray customPatternJson;
