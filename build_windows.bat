@@ -96,6 +96,32 @@ if not defined GEN (
 echo   Visual Studio: %GEN%  ^(%VSVER%^)
 echo   Installed at:  %VSPATH%
 
+REM Make sure the C++ compiler is really there. Visual Studio can list its C++
+REM tools as installed while cl.exe itself is missing (an interrupted update,
+REM or antivirus quarantining it) - CMake then fails with "No CMAKE_C_COMPILER
+REM could be found" / "TRK0005: Failed to locate CL.exe".
+set "VCTOOLSVER="
+if exist "%VSPATH%\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt" (
+    set /p VCTOOLSVER=<"!VSPATH!\VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt"
+)
+if defined VCTOOLSVER for /f "tokens=* delims= " %%T in ("!VCTOOLSVER!") do set "VCTOOLSVER=%%T"
+if not defined VCTOOLSVER (
+    set "WHY=Visual Studio's C++ tools are incomplete: it doesn't record which compiler version it has."
+    set "FIX=Open the Visual Studio Installer, click More > Repair on Visual Studio 2022, restart the PC, then run 'build_windows.bat clean'."
+    goto :failed
+)
+if not exist "%VSPATH%\VC\Tools\MSVC\!VCTOOLSVER!\bin\Hostx64\x64\cl.exe" (
+    echo.
+    echo   Visual Studio expects its C++ compiler here, but cl.exe is missing:
+    echo     !VSPATH!\VC\Tools\MSVC\!VCTOOLSVER!\bin\Hostx64\x64\cl.exe
+    echo   Compiler versions actually present:
+    dir /b "!VSPATH!\VC\Tools\MSVC" 2>nul
+    set "WHY=Visual Studio's C++ compiler, cl.exe, is missing from its install, even though the C++ tools are listed as installed."
+    set "FIX=Visual Studio Installer > More > Repair. If your antivirus quarantined cl.exe, restore it and exclude the Visual Studio folder. Then run 'build_windows.bat clean'."
+    goto :failed
+)
+echo   C++ compiler:  MSVC !VCTOOLSVER!
+
 REM -------------------------------------------------- stale / clean build dir
 if "%DO_CLEAN%"=="1" (
     echo   Cleaning the build folder...
@@ -206,7 +232,7 @@ set "CHECK_LOG=%LOGDIR%\compiler-check-errors.txt"
 type nul > "%CHECK_LOG%"
 if "%STAGE%"=="configure" for %%F in ("build\CMakeFiles\CMakeConfigureLog.yaml" "build\CMakeFiles\CMakeError.log") do (
     if exist "%%~F" (
-        findstr /i /c:"error MSB" /c:"error C" /c:"error LNK" /c:"fatal error" /c:"Access is denied" /c:"is not recognized" "%%~F" >> "%CHECK_LOG%" 2>nul
+        findstr /i /c:"error MSB" /c:"error TRK" /c:"error C" /c:"error LNK" /c:"fatal error" /c:"Access is denied" /c:"is not recognized" "%%~F" >> "%CHECK_LOG%" 2>nul
         copy /y "%%~F" "%LOGDIR%\cmake-compiler-check-%%~nxF" >nul 2>nul
     )
 )
@@ -231,6 +257,7 @@ set "WHY=The %STAGE% step failed."
 set "FIX=See the errors below and the full log in %LOG%."
 
 call :match "Could not create named generator"       "Your CMake is too old for %GEN%."  "Update CMake from https://cmake.org/download/ and run the script again."
+call :match "TRK0005"   "Visual Studio's C++ compiler (cl.exe) could not be found inside its install."  "Visual Studio Installer > More > Repair (an interrupted update or antivirus usually removes cl.exe). Then run 'build_windows.bat clean'."
 call :match "MSB8020"   "Visual Studio's C++ build tools (the MSVC v14x toolset) are missing from the install CMake used."  "Visual Studio Installer > Modify > Individual components: tick 'MSVC v143 - VS 2022 C++ x64/x86 build tools (Latest)'. Then run 'build_windows.bat clean'."
 call :match "MSB8036"   "The Windows SDK that CMake picked is not installed (or only partly)."  "Visual Studio Installer > Modify > Individual components: tick the newest 'Windows 11 SDK' (or Repair Visual Studio). Then run 'build_windows.bat clean'."
 call :match "kernel32.lib" "The Windows SDK is incomplete - its libraries are missing."  "Visual Studio Installer > Modify > Individual components: re-tick the newest 'Windows 11 SDK' (or Repair). Then run 'build_windows.bat clean'."
