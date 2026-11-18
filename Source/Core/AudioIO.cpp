@@ -6,7 +6,9 @@ namespace foundry
 
 AudioIO::AudioIO()
 {
-    formats.registerFormat (new juce::WavAudioFormat(), true);
+    // WAV is the default; AIFF, FLAC and Ogg cover the rest of a typical
+    // sample library. Output is always written as WAV.
+    formats.registerBasicFormats();
 }
 
 int AudioIO::beatsToSamples (double beats, double bpm, double sampleRate) noexcept
@@ -83,7 +85,7 @@ juce::AudioBuffer<float> AudioIO::resample (const juce::AudioBuffer<float>& src,
 }
 
 bool AudioIO::loadWav (const juce::File& file, juce::AudioBuffer<float>& buffer,
-                       double& sampleRate, juce::String& error)
+                       double& sampleRate, juce::String& error, double maxSeconds)
 {
     if (! file.existsAsFile())
     {
@@ -91,9 +93,9 @@ bool AudioIO::loadWav (const juce::File& file, juce::AudioBuffer<float>& buffer,
         return false;
     }
 
-    if (! file.hasFileExtension (".wav"))
+    if (! isSupportedAudioFile (file))
     {
-        error = "Unsupported audio file (WAV only): " + file.getFileName();
+        error = "Unsupported audio file (WAV, AIFF, FLAC or Ogg): " + file.getFileName();
         return false;
     }
 
@@ -104,8 +106,11 @@ bool AudioIO::loadWav (const juce::File& file, juce::AudioBuffer<float>& buffer,
         return false;
     }
 
-    const int n = (int) juce::jmin ((juce::int64) std::numeric_limits<int>::max() - 8,
-                                    reader->lengthInSamples);
+    auto available = reader->lengthInSamples;
+    if (maxSeconds > 0.0 && reader->sampleRate > 0.0)
+        available = juce::jmin (available, (juce::int64) (maxSeconds * reader->sampleRate));
+
+    const int n = (int) juce::jmin ((juce::int64) std::numeric_limits<int>::max() - 8, available);
     if (n <= 0)
     {
         error = "Audio file is empty: " + file.getFileName();

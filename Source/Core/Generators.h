@@ -3,6 +3,7 @@
 #include "AudioIO.h"
 #include "ConfigStore.h"
 #include "LibraryDatabase.h"
+#include "Patterns.h"
 
 namespace foundry
 {
@@ -38,7 +39,13 @@ struct BassRequest
     double bpm = kRiddimBpm;
     int bars = 2;
     int quantity = 10;
-    int sourceCount = 3;          // 2–4
+    int sourceCount = 3;          // 2-4 (template mode)
+
+    // Pattern mode: play this grid (rows A-D = sources) instead of a random
+    // template. Locked sources are used as-is in either mode.
+    bool usePattern = false;
+    DrumPattern pattern;
+    std::array<SampleLock, 4> locks {};
     Variation variation = Variation::Normal;
     bool protectPeaks = true;
     double sampleRate = 48000.0;

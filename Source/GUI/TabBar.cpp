@@ -3,8 +3,8 @@
 namespace pt
 {
 
-TabBar::TabBar()
-    : theme (getTheme())
+TabBar::TabBar (juce::StringArray tabLabels)
+    : labels (std::move (tabLabels)), theme (getTheme())
 {
 }
 

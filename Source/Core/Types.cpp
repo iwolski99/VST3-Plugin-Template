@@ -130,6 +130,8 @@ juce::String categoryName (Category c)
         case Category::OneShotHat:       return "Closed Hats";
         case Category::OneShotRide:      return "Rides";
         case Category::OneShotBass:      return "Bass";
+        case Category::Riff:             return "Riffs";
+        case Category::Unknown:
         default:                         return "Unknown";
     }
 }
@@ -148,6 +150,8 @@ juce::String categoryKey (Category c)
         case Category::OneShotHat:       return "hat";
         case Category::OneShotRide:      return "ride";
         case Category::OneShotBass:      return "bass";
+        case Category::Riff:             return "riff";
+        case Category::Unknown:
         default:                         return "unknown";
     }
 }
@@ -164,13 +168,15 @@ Category categoryFromKey (const juce::String& k)
     if (k == "hat")          return Category::OneShotHat;
     if (k == "ride")         return Category::OneShotRide;
     if (k == "bass")         return Category::OneShotBass;
+    if (k == "riff")         return Category::Riff;
     return Category::Unknown;
 }
 
 bool isGeneratedCategory (Category c) noexcept
 {
     return c == Category::DrumLoopsRiddim || c == Category::DrumLoopsDubstep
-        || c == Category::BassLoopsBase   || c == Category::BassLoopsSpliced;
+        || c == Category::BassLoopsBase   || c == Category::BassLoopsSpliced
+        || c == Category::Riff;
 }
 
 bool isBassLoopCategory (Category c) noexcept
@@ -190,6 +196,7 @@ juce::String folderRoleName (FolderRole r)
         case FolderRole::Bass:           return "Bass One-Shots";
         case FolderRole::GeneratedDrums: return "Generated Drum Loops";
         case FolderRole::GeneratedBass:  return "Generated Bass Loops";
+        case FolderRole::Riffs:          return "My Riffs";
         default:                         return {};
     }
 }
@@ -206,6 +213,7 @@ juce::String folderRoleKey (FolderRole r)
         case FolderRole::Bass:           return "bass";
         case FolderRole::GeneratedDrums: return "generatedDrums";
         case FolderRole::GeneratedBass:  return "generatedBass";
+        case FolderRole::Riffs:          return "riffs";
         default:                         return {};
     }
 }
@@ -220,6 +228,9 @@ Category categoryForRole (FolderRole r) noexcept
         case FolderRole::Hat:   return Category::OneShotHat;
         case FolderRole::Ride:  return Category::OneShotRide;
         case FolderRole::Bass:  return Category::OneShotBass;
+        case FolderRole::Riffs: return Category::Riff;
+        case FolderRole::GeneratedDrums:
+        case FolderRole::GeneratedBass:
         default:                return Category::Unknown;
     }
 }
@@ -333,6 +344,17 @@ juce::File defaultDatabaseFile()
 juce::String legalStem (const juce::String& s)
 {
     return juce::File::createLegalFileName (s);
+}
+
+const juce::String& audioFileWildcard()
+{
+    static const juce::String w ("*.wav;*.aif;*.aiff;*.flac;*.ogg");
+    return w;
+}
+
+bool isSupportedAudioFile (const juce::File& f)
+{
+    return f.hasFileExtension ("wav;aif;aiff;flac;ogg");
 }
 
 } // namespace foundry

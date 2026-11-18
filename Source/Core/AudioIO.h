@@ -15,8 +15,10 @@ public:
 
     AudioIO();
 
+    /** Decodes any supported audio file (the name predates AIFF/FLAC support).
+        `maxSeconds` > 0 stops decoding after that much audio. */
     bool loadWav (const juce::File& file, juce::AudioBuffer<float>& buffer,
-                  double& sampleRate, juce::String& error);
+                  double& sampleRate, juce::String& error, double maxSeconds = 0.0);
 
     bool writeWav (const juce::File& file, const juce::AudioBuffer<float>& buffer,
                    double sampleRate, int bitDepth, juce::String& error);

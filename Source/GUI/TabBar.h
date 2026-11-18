@@ -10,7 +10,7 @@ class TabBar : public juce::Component
 public:
     std::function<void (int)> onTabChanged;
 
-    TabBar();
+    explicit TabBar (juce::StringArray tabLabels);
 
     void setTheme (const Theme& t);
     void setSelected (int index);
@@ -24,7 +24,7 @@ public:
 private:
     int indexAt (float x) const noexcept;
 
-    juce::StringArray labels { "LIBRARY", "DRUMS", "BASS", "SPLICER" };
+    juce::StringArray labels;
     int selected = 0;
     int hovered = -1;
     Theme theme;

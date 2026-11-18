@@ -1,4 +1,5 @@
 #include "PreviewEngine.h"
+#include <utility>
 
 namespace foundry
 {
@@ -35,10 +36,12 @@ void PreviewEngine::prepare (double sampleRate, int)
 
         // The source is gone, so the stale clip cannot be rebuilt: drop it
         // rather than play it back at the wrong rate.
+        std::unique_ptr<Clip> old;
         {
             const juce::SpinLock::ScopedLockType sl (swapLock);
-            clip.reset();
+            old = std::move (clip);
         }
+        old.reset();
 
         clipLoaded.store (false);
         clipSamples.store (0);
@@ -176,10 +179,15 @@ bool PreviewEngine::loadInternal (const juce::File& f, bool loop, bool startNow,
         name = f.getFileName();
     }
 
+    // Swap under the lock, free the old clip after releasing it: the audio
+    // thread only try-locks, so every moment the lock is held is a block it
+    // has to skip - keep that to a pointer swap, never a deallocation.
+    std::unique_ptr<Clip> old;
     {
         const juce::SpinLock::ScopedLockType sl (swapLock);
-        clip = std::move (next);
+        old = std::exchange (clip, std::move (next));
     }
+    old.reset();
 
     clipSamples.store (n);
     looping.store (loop);

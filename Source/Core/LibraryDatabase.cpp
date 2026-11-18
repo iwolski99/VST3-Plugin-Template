@@ -86,7 +86,14 @@ bool LibraryDatabase::createSchema (juce::String& error)
         "CREATE INDEX IF NOT EXISTS idx_library_filename ON library(filename);"
         "CREATE INDEX IF NOT EXISTS idx_library_category ON library(category);"
         "CREATE INDEX IF NOT EXISTS idx_library_favorite ON library(favorite);"
-        "CREATE INDEX IF NOT EXISTS idx_library_created ON library(date_created);";
+        "CREATE INDEX IF NOT EXISTS idx_library_created ON library(date_created);"
+        "CREATE TABLE IF NOT EXISTS thumbs ("
+        "  path TEXT PRIMARY KEY,"
+        "  mod_time INTEGER,"
+        "  size INTEGER,"
+        "  seconds REAL,"
+        "  peaks BLOB"
+        ");";
 
     return exec (sql, error);
 }
@@ -139,7 +146,7 @@ bool LibraryDatabase::rebuild (juce::String& error)
         return false;
     }
 
-    return exec ("DELETE FROM library;", error);
+    return exec ("DELETE FROM library; DELETE FROM thumbs;", error);
 }
 
 juce::String LibraryDatabase::likePattern (const juce::String& raw)
@@ -384,6 +391,186 @@ std::vector<LibraryItem> LibraryDatabase::query (Category category,
 
     sqlite3_finalize (stmt);
     return out;
+}
+
+std::vector<LibraryItem> LibraryDatabase::runItemQuery (const juce::String& whereAndOrder,
+                                                        const juce::StringArray& textParams) const
+{
+    std::vector<LibraryItem> out;
+    const juce::ScopedLock sl (lock);
+    if (db == nullptr)
+        return out;
+
+    const juce::String sql = "SELECT id, filename, path, file_type, category, bpm, bars, genre,"
+                             " date_created, date_indexed, favorite, generation_type, generation_seed,"
+                             " parent_source_ids, pattern_id, engine, generation_depth, exists_on_disk"
+                             " FROM library WHERE exists_on_disk=1 " + whereAndOrder;
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2 (db, sql.toRawUTF8(), -1, &stmt, nullptr) != SQLITE_OK)
+        return out;
+
+    for (int i = 0; i < textParams.size(); ++i)
+        sqlite3_bind_text (stmt, i + 1, textParams[i].toRawUTF8(), -1, SQLITE_TRANSIENT);
+
+    while (sqlite3_step (stmt) == SQLITE_ROW)
+        out.push_back (readRow (stmt));
+
+    sqlite3_finalize (stmt);
+    return out;
+}
+
+std::vector<LibraryItem> LibraryDatabase::queryUnderFolder (const juce::String& dirPath,
+                                                            const juce::String& search,
+                                                            int limit) const
+{
+    juce::String where;
+    juce::StringArray params;
+
+    if (dirPath.isNotEmpty())
+    {
+        // Prefix match on the folder plus a separator, so "Kicks" never
+        // matches "Kicks_Old". substr() keeps this independent of LIKE's
+        // wildcard and case rules, which differ from file-system paths.
+        auto prefix = dirPath;
+        if (! prefix.endsWithChar (juce::File::getSeparatorChar()))
+            prefix += juce::File::getSeparatorString();
+
+        params.add (prefix);
+        where << " AND substr(path, 1, length(?1)) = ?1";
+    }
+
+    if (search.trim().isNotEmpty())
+    {
+        params.add (likePattern (search));
+        where << " AND filename LIKE ?" << params.size() << " ESCAPE '\\'";
+    }
+
+    where << " ORDER BY filename COLLATE NOCASE";
+    if (limit > 0)
+        where << " LIMIT " << limit;
+
+    return runItemQuery (where, params);
+}
+
+int LibraryDatabase::countUnderFolder (const juce::String& dirPath) const
+{
+    const juce::ScopedLock sl (lock);
+    if (db == nullptr || dirPath.isEmpty())
+        return 0;
+
+    auto prefix = dirPath;
+    if (! prefix.endsWithChar (juce::File::getSeparatorChar()))
+        prefix += juce::File::getSeparatorString();
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2 (db, "SELECT COUNT(*) FROM library WHERE exists_on_disk=1"
+                                " AND substr(path, 1, length(?1)) = ?1;", -1, &stmt, nullptr) != SQLITE_OK)
+        return 0;
+
+    sqlite3_bind_text (stmt, 1, prefix.toRawUTF8(), -1, SQLITE_TRANSIENT);
+    int n = 0;
+    if (sqlite3_step (stmt) == SQLITE_ROW)
+        n = sqlite3_column_int (stmt, 0);
+    sqlite3_finalize (stmt);
+    return n;
+}
+
+int LibraryDatabase::countFavourites() const
+{
+    const juce::ScopedLock sl (lock);
+    if (db == nullptr)
+        return 0;
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2 (db, "SELECT COUNT(*) FROM library WHERE exists_on_disk=1 AND favorite=1;",
+                            -1, &stmt, nullptr) != SQLITE_OK)
+        return 0;
+
+    int n = 0;
+    if (sqlite3_step (stmt) == SQLITE_ROW)
+        n = sqlite3_column_int (stmt, 0);
+    sqlite3_finalize (stmt);
+    return n;
+}
+
+std::vector<LibraryItem> LibraryDatabase::queryFavourites (const juce::String& search, int limit) const
+{
+    juce::String where = " AND favorite=1";
+    juce::StringArray params;
+
+    if (search.trim().isNotEmpty())
+    {
+        params.add (likePattern (search));
+        where << " AND filename LIKE ?1 ESCAPE '\\'";
+    }
+
+    where << " ORDER BY filename COLLATE NOCASE";
+    if (limit > 0)
+        where << " LIMIT " << limit;
+
+    return runItemQuery (where, params);
+}
+
+std::optional<LibraryItem> LibraryDatabase::findByFilename (const juce::String& filename) const
+{
+    auto rows = runItemQuery (" AND filename = ?1 LIMIT 1", juce::StringArray { filename });
+    if (rows.empty())
+        return {};
+    return rows.front();
+}
+
+bool LibraryDatabase::loadThumb (const juce::String& path, juce::int64 modTime, juce::int64 size,
+                                 std::vector<juce::uint8>& peaks, double& seconds) const
+{
+    const juce::ScopedLock sl (lock);
+    if (db == nullptr)
+        return false;
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2 (db, "SELECT mod_time, size, seconds, peaks FROM thumbs WHERE path=?1;",
+                            -1, &stmt, nullptr) != SQLITE_OK)
+        return false;
+
+    sqlite3_bind_text (stmt, 1, path.toRawUTF8(), -1, SQLITE_TRANSIENT);
+    bool ok = false;
+
+    if (sqlite3_step (stmt) == SQLITE_ROW
+        && columnI64 (stmt, 0) == modTime && columnI64 (stmt, 1) == size)
+    {
+        seconds = sqlite3_column_double (stmt, 2);
+        const auto* blob = static_cast<const juce::uint8*> (sqlite3_column_blob (stmt, 3));
+        const int bytes = sqlite3_column_bytes (stmt, 3);
+        if (blob != nullptr && bytes > 0)
+        {
+            peaks.assign (blob, blob + bytes);
+            ok = true;
+        }
+    }
+
+    sqlite3_finalize (stmt);
+    return ok;
+}
+
+void LibraryDatabase::storeThumb (const juce::String& path, juce::int64 modTime, juce::int64 size,
+                                  const std::vector<juce::uint8>& peaks, double seconds) const
+{
+    const juce::ScopedLock sl (lock);
+    if (db == nullptr || peaks.empty())
+        return;
+
+    sqlite3_stmt* stmt = nullptr;
+    if (sqlite3_prepare_v2 (db, "INSERT OR REPLACE INTO thumbs (path, mod_time, size, seconds, peaks)"
+                                " VALUES (?1, ?2, ?3, ?4, ?5);", -1, &stmt, nullptr) != SQLITE_OK)
+        return;
+
+    sqlite3_bind_text  (stmt, 1, path.toRawUTF8(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64 (stmt, 2, (sqlite3_int64) modTime);
+    sqlite3_bind_int64 (stmt, 3, (sqlite3_int64) size);
+    sqlite3_bind_double (stmt, 4, seconds);
+    sqlite3_bind_blob  (stmt, 5, peaks.data(), (int) peaks.size(), SQLITE_TRANSIENT);
+    sqlite3_step (stmt);
+    sqlite3_finalize (stmt);
 }
 
 std::vector<LibraryItem> LibraryDatabase::queryByRole (FolderRole role, const juce::String& search) const

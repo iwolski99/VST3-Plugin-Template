@@ -22,8 +22,17 @@ struct Theme
     juce::Colour text, textDim;
 };
 
-/** The default theme. Start here, then just change the hex codes - the rest
-    of the GUI updates itself because nothing else hard-codes a colour. */
+/** The theme currently in use. New components start from this; open
+    editors are re-skinned through their setTheme() chain. */
 const Theme& getTheme() noexcept;
+
+/** The built-in colour schemes, in menu order: Orange (the original forged
+    steel and molten metal), Purple, Green, Blue and Red. */
+const juce::StringArray& themeNames();
+const Theme& themeByName (const juce::String& name) noexcept;
+
+/** Makes `name` the current theme (unknown names fall back to Orange). */
+void setCurrentTheme (const juce::String& name);
+juce::String currentThemeName();
 
 } // namespace pt

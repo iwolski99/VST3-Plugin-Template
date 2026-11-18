@@ -1,4 +1,5 @@
 #include "LibraryScan.h"
+#include <algorithm>
 #include <set>
 
 namespace foundry
@@ -6,10 +7,6 @@ namespace foundry
 
 namespace
 {
-    bool isWav (const juce::File& f)
-    {
-        return f.hasFileExtension (".wav");
-    }
 
     Category inferGeneratedCategory (FolderRole role, const juce::File& file, const juce::File& root)
     {
@@ -21,6 +18,9 @@ namespace
                 return Category::DrumLoopsDubstep;
             return Category::DrumLoopsRiddim;
         }
+
+        if (role == FolderRole::Riffs)
+            return Category::Riff;
 
         if (role == FolderRole::GeneratedBass)
         {
@@ -51,15 +51,22 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
     }
 
     std::vector<std::pair<FolderRole, juce::File>> roots;
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < kNumFolderRoles; ++i)
     {
         const auto role = (FolderRole) i;
         auto dir = config.folder (role);
+
+        // Rendered riffs always live somewhere, mapped or not.
+        if (role == FolderRole::Riffs && ! dir.isDirectory())
+            dir = config.riffDir();
+
         if (dir.isDirectory())
             roots.push_back ({ role, dir });
     }
 
-    if (roots.empty())
+    const bool anySourceMapped = std::any_of (roots.begin(), roots.end(),
+                                              [] (const auto& r) { return r.first != FolderRole::Riffs; });
+    if (! anySourceMapped && config.get().userFolders.isEmpty())
     {
         out.error = "No source folders are mapped. Open Settings and assign folders, or create the recommended structure.";
         return out;
@@ -67,14 +74,29 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
 
     juce::Array<juce::File> files;
     juce::Array<FolderRole> roles;
+    juce::Array<bool> custom;   // true: a folder the user added in the browser
 
     for (const auto& r : roots)
     {
-        auto found = r.second.findChildFiles (juce::File::findFiles, true, "*.wav");
+        auto found = r.second.findChildFiles (juce::File::findFiles, true, audioFileWildcard());
         for (auto& f : found)
         {
             files.add (f);
             roles.add (r.first);
+            custom.add (false);
+        }
+    }
+
+    for (const auto& path : config.get().userFolders)
+    {
+        const juce::File dir (path);
+        if (! dir.isDirectory())
+            continue;
+        for (auto& f : dir.findChildFiles (juce::File::findFiles, true, audioFileWildcard()))
+        {
+            files.add (f);
+            roles.add (FolderRole::Kick);   // unused for custom folders
+            custom.add (true);
         }
     }
 
@@ -94,12 +116,15 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
         }
 
         const auto& f = files.getReference (i);
-        if (! isWav (f))
+        if (! isSupportedAudioFile (f))
             continue;
 
+        if (seen.count (f.getFullPathName()) != 0)
+            continue;   // inside both a library folder and an added folder
+
         const auto role = roles.getUnchecked (i);
-        const auto cat = inferGeneratedCategory (role, f, roots.empty() ? f.getParentDirectory()
-                                                                        : config.folder (role));
+        const bool isCustom = custom.getUnchecked (i);
+        auto cat = isCustom ? Category::Unknown : inferGeneratedCategory (role, f, config.folder (role));
 
         LibraryItem it;
         bool alreadyIndexed = false;
@@ -108,6 +133,11 @@ ScanOutcome scanLibrary (ConfigStore& config, LibraryDatabase& db,
             it = *existing;
             alreadyIndexed = true;
         }
+
+        // A file moved into one of your own folders keeps what it was
+        // (a kick stays a kick, a riff stays a riff).
+        if (isCustom && alreadyIndexed && it.category != Category::Unknown)
+            cat = it.category;
 
         it.filename = f.getFileName();
         it.path = f.getFullPathName();

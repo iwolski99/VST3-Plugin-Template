@@ -64,6 +64,46 @@ juce::File ConfigStore::generatedBassDir (bool spliced) const
     return base.getChildFile (spliced ? "Spliced" : "Base");
 }
 
+juce::File ConfigStore::riffDir() const
+{
+    auto mapped = folder (FolderRole::Riffs);
+    if (mapped.isDirectory())
+        return mapped;
+
+    auto r = root();
+    auto dir = r.isDirectory() ? r.getChildFile ("Riffs") : appDataDir().getChildFile ("Riffs");
+    if (! dir.isDirectory())
+        dir.createDirectory();
+    return dir;
+}
+
+juce::File ConfigStore::patternsRoot() const
+{
+    auto r = root();
+    auto dir = r.isDirectory() ? r.getChildFile ("Patterns") : appDataDir().getChildFile ("Patterns");
+    if (! dir.isDirectory())
+        dir.createDirectory();
+    return dir;
+}
+
+juce::File ConfigStore::patternDir (bool bass) const
+{
+    auto dir = patternsRoot().getChildFile (bass ? "Bass" : "Drums");
+    if (! dir.isDirectory())
+        dir.createDirectory();
+    return dir;
+}
+
+juce::File ConfigStore::generatedDrumsRoot() const
+{
+    return generatedDrumDir (Genre::Riddim).getParentDirectory();
+}
+
+juce::File ConfigStore::generatedBassRoot() const
+{
+    return generatedBassDir (false).getParentDirectory();
+}
+
 double ConfigStore::resolveBpm (Genre g, double hostBpm) const
 {
     switch (config.tempoMode)
@@ -106,7 +146,11 @@ bool ConfigStore::createRecommendedStructure (juce::String& error)
         { FolderRole::Bass,           "Sources/Bass_OneShots" },
         { FolderRole::GeneratedDrums, "Generated/Drum_Loops" },
         { FolderRole::GeneratedBass,  "Generated/Bass_Loops" },
+        { FolderRole::Riffs,          "Riffs" },
     };
+
+    r.getChildFile ("Patterns").getChildFile ("Drums").createDirectory();
+    r.getChildFile ("Patterns").getChildFile ("Bass").createDirectory();
 
     for (const auto& m : map)
     {
@@ -207,12 +251,28 @@ bool ConfigStore::load (const juce::File& file, juce::String& error)
     config.uiZoom = juce::jlimit (50, 200, (int) obj->getProperty ("uiZoom"));
     if (config.uiZoom == 0)
         config.uiZoom = 100;
-    config.lastTab = juce::jlimit (0, 4, (int) obj->getProperty ("lastTab"));
+    // Older versions stored 0..3 for Library/Drums/Bass/Splicer; anything past
+    // the first tab now lives under Generator.
+    config.lastTab = (int) obj->getProperty ("lastTab") > 0 ? 1 : 0;
+    config.browserListView = (bool) obj->getProperty ("browserListView");
+    config.browserShowFolders = ! obj->hasProperty ("browserShowFolders") || (bool) obj->getProperty ("browserShowFolders");
+    config.browserHeight = obj->hasProperty ("browserHeight") ? juce::jlimit (150, 900, (int) obj->getProperty ("browserHeight")) : 240;
+    config.uiWidth  = juce::jlimit (0, 8000, (int) obj->getProperty ("uiWidth"));
+    config.uiHeight = juce::jlimit (0, 8000, (int) obj->getProperty ("uiHeight"));
+    config.themeName = obj->getProperty ("theme").toString();
+    if (config.themeName.isEmpty())
+        config.themeName = "Orange";
+
+    config.userFolders.clear();
+    if (auto* uf = obj->getProperty ("userFolders").getArray())
+        for (const auto& f : *uf)
+            if (f.toString().isNotEmpty())
+                config.userFolders.addIfNotAlreadyThere (f.toString());
     config.savedDrumPatternJson = obj->getProperty ("savedDrumPattern").toString();
 
     if (auto* folders = obj->getProperty ("folders").getDynamicObject())
     {
-        for (int i = 0; i < 8; ++i)
+        for (int i = 0; i < kNumFolderRoles; ++i)
         {
             const auto key = folderRoleKey ((FolderRole) i);
             config.folderPaths[(size_t) i] = folders->getProperty (key).toString();
@@ -237,6 +297,35 @@ bool ConfigStore::load (const juce::File& file, juce::String& error)
     return true;
 }
 
+bool ConfigStore::savePreferences (const juce::File& file, juce::String& error) const
+{
+    // Re-read what is on disk and only overwrite the "last used" values this
+    // instance owns. Every plugin instance loads the config when it is created
+    // and saves when it is destroyed, so writing the whole struct here would
+    // let an instance opened earlier silently revert library folders another
+    // instance changed in Settings since.
+    ConfigStore onDisk;
+    juce::String loadErr;
+    if (! onDisk.load (file, loadErr))
+        return save (file, error);
+
+    auto& d = onDisk.get();
+    d.defaultGenre         = config.defaultGenre;
+    d.defaultBars          = config.defaultBars;
+    d.defaultQuantity      = config.defaultQuantity;
+    d.previewVolume        = config.previewVolume;
+    d.followTransport      = config.followTransport;
+    d.uiZoom               = config.uiZoom;
+    d.lastTab              = config.lastTab;
+    d.browserListView      = config.browserListView;
+    d.browserShowFolders   = config.browserShowFolders;
+    d.browserHeight        = config.browserHeight;
+    d.uiWidth              = config.uiWidth;
+    d.uiHeight             = config.uiHeight;
+    d.savedDrumPatternJson = config.savedDrumPatternJson;
+    return onDisk.save (file, error);
+}
+
 bool ConfigStore::save (const juce::File& file, juce::String& error) const
 {
     auto obj = juce::DynamicObject::Ptr (new juce::DynamicObject());
@@ -253,10 +342,17 @@ bool ConfigStore::save (const juce::File& file, juce::String& error) const
     obj->setProperty ("followTransport", config.followTransport);
     obj->setProperty ("uiZoom", config.uiZoom);
     obj->setProperty ("lastTab", config.lastTab);
+    obj->setProperty ("browserListView", config.browserListView);
+    obj->setProperty ("browserShowFolders", config.browserShowFolders);
+    obj->setProperty ("browserHeight", config.browserHeight);
+    obj->setProperty ("uiWidth", config.uiWidth);
+    obj->setProperty ("uiHeight", config.uiHeight);
+    obj->setProperty ("theme", config.themeName);
+    obj->setProperty ("userFolders", juce::var (config.userFolders));
     obj->setProperty ("savedDrumPattern", config.savedDrumPatternJson);
 
     auto folders = juce::DynamicObject::Ptr (new juce::DynamicObject());
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < kNumFolderRoles; ++i)
         folders->setProperty (folderRoleKey ((FolderRole) i), config.folderPaths[(size_t) i]);
     obj->setProperty ("folders", juce::var (folders.get()));
 

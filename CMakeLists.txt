@@ -70,6 +70,17 @@ set_target_properties(FoundryAssets PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 # ---------------------------------------------------------------------------
 # Plugin
 # ---------------------------------------------------------------------------
+# On macOS / Linux the plugin folder is in your home directory, so copying the
+# finished plugin there after each build is harmless. On Windows it lives in
+# Program Files: copying there needs Administrator rights and would make the
+# whole build fail without them, so build_windows.bat installs it instead.
+if(WIN32)
+    set(FOUNDRY_COPY_DEFAULT OFF)
+else()
+    set(FOUNDRY_COPY_DEFAULT ON)
+endif()
+option(FOUNDRY_COPY_AFTER_BUILD "Copy the built plugin into the system plugin folder" ${FOUNDRY_COPY_DEFAULT})
+
 juce_add_plugin(Foundry
     COMPANY_NAME                "Iwolski Audio"
     COMPANY_WEBSITE             "https://github.com/iwolski99/VST3-Plugin-Template"
@@ -84,7 +95,7 @@ juce_add_plugin(Foundry
     NEEDS_MIDI_OUTPUT           FALSE
     IS_MIDI_EFFECT              FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS TRUE
-    COPY_PLUGIN_AFTER_BUILD     TRUE
+    COPY_PLUGIN_AFTER_BUILD     ${FOUNDRY_COPY_AFTER_BUILD}
     NEEDS_CURL                  FALSE
     NEEDS_WEB_BROWSER           FALSE
     VST3_CATEGORIES             Instrument Sampler
@@ -102,6 +113,12 @@ set(FOUNDRY_SOURCES
     Source/Core/PreviewEngine.cpp
     Source/Core/Generators.cpp
     Source/Core/JobWorker.cpp
+    Source/Core/RiffTypes.cpp
+    Source/Core/Patterns.cpp
+    Source/Core/SampleCache.cpp
+    Source/Core/RiffEngine.cpp
+    Source/Core/ThumbnailCache.cpp
+    Source/Core/BrowserModel.cpp
     Source/GUI/Theme.cpp
     Source/GUI/LookAndFeel.cpp
     Source/GUI/KnobComponent.cpp
@@ -110,7 +127,9 @@ set(FOUNDRY_SOURCES
     Source/GUI/TabBar.cpp
     Source/GUI/BrowserList.cpp
     Source/GUI/SequencerGrid.cpp
-    Source/GUI/LibraryPanel.cpp
+    Source/GUI/TileBrowser.cpp
+    Source/GUI/RiffMakerPanel.cpp
+    Source/GUI/GeneratorPanel.cpp
     Source/GUI/DrumPanel.cpp
     Source/GUI/BassPanel.cpp
     Source/GUI/SplicerPanel.cpp
@@ -172,7 +191,13 @@ if(FOUNDRY_BUILD_TESTS)
         Source/Core/AudioIO.cpp
         Source/Core/PreviewEngine.cpp
         Source/Core/Generators.cpp
-        Source/Core/JobWorker.cpp)
+        Source/Core/JobWorker.cpp
+        Source/Core/RiffTypes.cpp
+        Source/Core/Patterns.cpp
+        Source/Core/SampleCache.cpp
+        Source/Core/RiffEngine.cpp
+        Source/Core/ThumbnailCache.cpp
+        Source/Core/BrowserModel.cpp)
 
     juce_add_console_app(FoundryEngineTest PRODUCT_NAME "FoundryEngineTest")
     target_sources(FoundryEngineTest PRIVATE Tests/EngineTest.cpp ${FOUNDRY_ENGINE_SOURCES})
@@ -224,6 +249,28 @@ if(FOUNDRY_BUILD_TESTS)
         JUCE_REPORT_APP_USAGE=0
         JUCE_MODAL_LOOPS_PERMITTED=1)
     target_link_libraries(FoundryLifecycleTest PRIVATE
+        FoundryAssets
+        foundry_sqlite
+        juce::juce_audio_utils
+        juce::juce_audio_formats
+        juce::juce_audio_processors
+        juce::juce_gui_basics
+        juce::juce_gui_extra
+        PUBLIC
+        juce::juce_recommended_config_flags)
+
+    # Renders the editor to PNGs for layout checks (run under Xvfb on Linux).
+    juce_add_console_app(FoundryScreenshot PRODUCT_NAME "FoundryScreenshot")
+    target_sources(FoundryScreenshot PRIVATE Tests/ScreenshotTool.cpp ${FOUNDRY_SOURCES})
+    target_include_directories(FoundryScreenshot PRIVATE Source)
+    target_compile_definitions(FoundryScreenshot PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_STANDALONE_APPLICATION=1
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_REPORT_APP_USAGE=0
+        JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(FoundryScreenshot PRIVATE
         FoundryAssets
         foundry_sqlite
         juce::juce_audio_utils
