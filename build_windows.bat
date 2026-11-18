@@ -188,7 +188,11 @@ if "%STAGE%"=="build" set "LOG=%BUILD_LOG%"
 if not exist "%LOG%" set "LOG=%CONFIG_LOG%"
 
 REM Collect the actual error lines into errors.txt.
-findstr /i /r /c:"error [A-Z][A-Z]*[0-9][0-9]*:" /c:"fatal error" /c:"CMake Error" /c:"error:" "%CONFIG_LOG%" "%BUILD_LOG%" > "%ERRORS%" 2>nul
+REM (One file at a time, so the lines aren't prefixed with the log's path.)
+type nul > "%ERRORS%"
+for %%F in ("%CONFIG_LOG%" "%BUILD_LOG%") do (
+    if exist "%%~F" findstr /i /r /c:"error [A-Z][A-Z]*[0-9][0-9]*:" /c:"fatal error" /c:"CMake Error" /c:"error:" "%%~F" >> "%ERRORS%" 2>nul
+)
 
 set "WHY=The %STAGE% step failed."
 set "FIX=See the errors below and the full log in %LOG%."
