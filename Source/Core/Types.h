@@ -50,6 +50,7 @@ enum class Category
     OneShotHat,
     OneShotRide,
     OneShotBass,
+    Riff,               // rendered by the Riff Maker
     Unknown
 };
 
@@ -62,8 +63,11 @@ enum class FolderRole
     Ride,
     Bass,
     GeneratedDrums,
-    GeneratedBass
+    GeneratedBass,
+    Riffs               // where the Riff Maker renders to
 };
+
+inline constexpr int kNumFolderRoles = 9;
 
 enum class SortMode { Name = 0, Newest, Oldest, Bpm, Genre, Favorites };
 
@@ -113,7 +117,7 @@ struct DrumPattern
 struct AppConfig
 {
     juce::String rootPath;
-    std::array<juce::String, 8> folderPaths {}; // indexed by FolderRole
+    std::array<juce::String, kNumFolderRoles> folderPaths {}; // indexed by FolderRole
     Genre     defaultGenre     = Genre::Riddim;
     TempoMode tempoMode        = TempoMode::GenreDefault;
     double    customBpm        = kRiddimBpm;
@@ -125,7 +129,8 @@ struct AppConfig
     bool      renderProtection = true;
     bool      followTransport  = true;
     int       uiZoom           = 100;
-    int       lastTab          = 0;
+    int       lastTab          = 0;   // 0 = Riff Maker, 1 = Generator
+    bool      browserListView  = false;
     juce::String savedDrumPatternJson;
     juce::StringArray customPatternNames;
     juce::StringArray customPatternJson;
@@ -158,5 +163,10 @@ juce::File defaultConfigFile();
 juce::File defaultDatabaseFile(); // used until a root is chosen
 
 juce::String legalStem (const juce::String& s);
+
+/** Audio file types Foundry can index, preview and load into the Riff Maker.
+    Generated output is always written as WAV. */
+const juce::String& audioFileWildcard();
+bool isSupportedAudioFile (const juce::File& f);
 
 } // namespace foundry

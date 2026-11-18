@@ -112,6 +112,7 @@ public:
     StatusBanner()
     {
         settingsButton.setButtonText ("OPEN SETTINGS");
+        setMouseCursor (juce::MouseCursor::PointingHandCursor);
         settingsButton.onClick = [this] { if (onOpenSettings) onOpenSettings(); };
         addChildComponent (settingsButton);
         setVisible (false);
@@ -127,6 +128,13 @@ public:
     void resized() override
     {
         settingsButton.setBounds (getWidth() - 132, 6, 120, getHeight() - 12);
+    }
+
+    // Click anywhere on the banner (not its button) to dismiss it.
+    void mouseUp (const juce::MouseEvent& e) override
+    {
+        if (getLocalBounds().contains (e.getPosition()))
+            setMessage ({}, false, false);
     }
 
     void paint (juce::Graphics& g) override

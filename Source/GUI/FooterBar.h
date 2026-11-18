@@ -7,7 +7,8 @@ namespace pt
 {
 
 //==============================================================================
-/** Preview transport, filename, waveform strip, volume, zoom. No A/B. */
+/** Sample preview (what you last clicked in the browser), output volume and
+    interface zoom. The riff has its own transport on the Riff Maker page. */
 class FooterBar : public juce::Component,
                   private juce::Timer
 {
@@ -34,7 +35,6 @@ private:
 
     juce::TextButton playButton { "PLAY" };
     juce::TextButton stopButton { "STOP" };
-    juce::TextButton syncButton { "SYNC" };
     Knob volumeKnob;
     juce::ComboBox zoomBox;
 

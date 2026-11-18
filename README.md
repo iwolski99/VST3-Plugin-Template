@@ -1,20 +1,103 @@
 # Foundry
 
-A local VST3 **instrument** for Riddim and Dubstep loop generation. Foundry
-indexes your own one-shots, generates drum loops and bass riffs from them,
-recombines those riffs in the Riff Splicer, and plays the results back on the
-spot - from the PLAY button, from the host transport, or from a MIDI note.
+A local VST3 **instrument** for building riffs out of your own samples.
 
-Because it is an instrument, load Foundry on an **instrument / generator**
-track, not an effect slot. That also keeps hosts from suspending it: an effect
-on a track with no incoming audio gets put to sleep by FL Studio's smart
-disable and by Ableton's device-chain sleep, which is exactly the state in
-which a sample player appears to do nothing when you press play.
+Foundry's main page is the **Riff Maker**: eight slots on a beat grid, each one
+playing just the start of a sample. Drag sounds in from the sample browser,
+slide where each one starts, choose how long each one lasts, lock the keepers
+and roll the dice on the rest. When it slaps, **RENDER** saves it as a WAV in
+*My Riffs*, or grab **DRAG TO DAW** and drop it straight onto your playlist.
+
+The original batch tools (Riddim / Dubstep drum loops, bass riffs and the riff
+splicer) are still here, on the **Generator** tab.
 
 No cloud. No subscription. Your sounds in. Ideas out.
 
-This lives on a feature branch of the VST3 plugin template repository so the
-original template on `main` stays untouched.
+## The Riff Maker
+
+```
+ ┌ PLAY STOP SYNC │ 1/4 grid │ 145 BPM │ DICE UNDO REDO CLEAR ─────── RENDER  DRAG TO DAW ┐
+ │ [1 sample] [2 sample] [3 empty ] [4 sample]                                             │
+ │ [5 sample] [6 sample] [7 sample] [8 sample]                                             │
+ ├ Library › Drums › Kicks                        [search]  TILES LIST  RESCAN ─────────────┤
+ │ ▢ ▢ ▢ ▢ ▢ ▢ ▢ ▢   sample browser: tiles with waveforms and names                       │
+ └ preview · volume · zoom ────────────────────────────────────────────────────────────────┘
+```
+
+- **Slots sit on a fixed grid.** Slot 1 starts on beat 1, slot 2 on beat 2, and
+  so on: eight slots on the default 1/4 grid make a 2-bar riff. Switch the
+  grid to 1/16, 1/8 or 1/2 for faster or slower riffs.
+- **Each slot plays only the first slice of its sample**, a quarter note by
+  default. Change it with the ◂ ▸ arrows (1/16 up to 1 bar). A slice longer
+  than the grid is cut off when the next slot starts, so the riff behaves like
+  a bass line. If the next slot is empty, the slice rings on into it.
+- **Slide the start position** by dragging the waveform left or right, the way
+  you slip-edit a clip in FL Studio's playlist: the slot stays on the grid and
+  the audio moves underneath it. Hold Shift for fine moves; double-click the
+  waveform to reset. The strip under the waveform shows where in the file the
+  slot is playing from.
+- **Volume per slot**: drag the dB value up or down (double-click resets).
+- **Lock** a slot (padlock) and the dice and CLEAR leave it alone.
+- **DICE** fills every unlocked slot with a random sample from whatever folder
+  is open in the browser, or from your search results. Open *Drums › Kicks*
+  and roll for kick riffs, or open *Bass* and roll for bass riffs.
+- **Rearrange** by dragging a slot by its title bar onto another slot (they
+  swap). The right-click menu has copy-to-slot, lengths, reset and more.
+- **Undo / redo** every edit (also Ctrl/Cmd+Z, Ctrl/Cmd+Shift+Z).
+- **Hear it**: click a slot's waveform to play just that slot; PLAY loops the
+  whole riff; **SYNC** plays it along with the DAW's transport, locked to the
+  bar (it picks up mid-riff if you start playback in the middle); any MIDI
+  note plays it from the top while held.
+
+### Getting the riff into your song
+
+- **RENDER** writes one seamless loop, e.g. `Riff_0007_145BPM.wav`, into your
+  *My Riffs* folder at the current tempo. Nothing changed since the last
+  render? Foundry reuses that file instead of making a duplicate.
+- **DRAG TO DAW**: drag the handle out of the plugin window and onto the
+  playlist. Hover just outside the plugin for a moment and the DAW takes over
+  the drag. The riff is rendered (and saved in *My Riffs*) as it leaves.
+- Every render also saves an editable `.foundryriff` file next to the WAV. In
+  the browser, **double-click a riff** (or right-click → *Open in Riff Maker*)
+  to bring the exact slots back and keep working on it. Samples that were
+  moved are found again by filename.
+- The riff you're working on is saved with your DAW project.
+
+## The sample browser
+
+A game-engine-style asset dock along the bottom: square tiles with a waveform
+thumbnail and the sample's **name under every tile**, plus a **LIST** view
+when you'd rather see more names at once.
+
+- Curated folders at the top, mapped from Settings: **Favourites**,
+  **Drums** (Kicks, Snares, Claps, Hats, Rides), **Bass**, **My Riffs** and
+  **Generated**. Inside those you browse your real sub-folders, with a
+  clickable breadcrumb and an up button.
+- **Click** a sample to hear it. **Drag** it onto a slot. **Double-click** to
+  drop it into the next empty slot. Right-click for favourites, *Load into
+  slot*, *Send to Splicer*, *Lock in Drum Generator* and *Show in Explorer*.
+- Drag a tile **out of the plugin** to drop the file into the DAW.
+- You can also drag audio files from Explorer/Finder straight onto a slot.
+  Drop several and they fill that slot and the ones after it.
+- **Search** is instant and never touches the disk: it queries the library
+  index, so a huge sample collection doesn't stall the DAW. It searches the
+  open folder and everything below it (or the whole library from the top).
+- Thumbnails are drawn in the background and cached in the library database,
+  so a folder you've opened once draws instantly next time.
+- WAV, AIFF, FLAC and Ogg files are indexed. Renders are always 24-bit WAV.
+- New files show up after **RESCAN** (or *Refresh Library* in Settings).
+
+## The Generator tab
+
+The original Foundry tools, unchanged in what they do:
+
+- **Drum Loops**: a 4-row step pattern (kick, clap, hat, ride) rendered into
+  1–50 loops using random or locked samples, as full loops and/or stems.
+- **Bass Riffs**: sequences 2–4 of your bass one-shots into rhythmic phrases.
+- **Splicer**: slices 2–4 bass loops and recombines them into new variations.
+
+When a batch finishes, the browser opens its output folder so the new loops
+are right there to preview, drag into the DAW, or drop into a Riff Maker slot.
 
 ## Clone and build (Windows)
 
@@ -22,7 +105,7 @@ You need **CMake 3.22+**, **Visual Studio 2022** (Desktop C++ workload), and
 an internet connection on the first configure so JUCE can be downloaded.
 
 ```bat
-git clone -b claude/foundry-vst-bugs-pll8g9 --single-branch https://github.com/iwolski99/VST3-Plugin-Template.git Foundry
+git clone https://github.com/iwolski99/VST3-Plugin-Template.git Foundry
 cd Foundry
 build_windows.bat
 ```
@@ -41,7 +124,8 @@ build\Foundry_artefacts\Release\VST3\Foundry.vst3
 ```
 
 Copy that folder into `C:\Program Files\Common Files\VST3\` yourself, then
-rescan plugins in FL Studio.
+rescan plugins in FL Studio. Load Foundry on an **instrument / generator**
+channel, not an effect slot.
 
 ### Manual Windows build
 
@@ -53,7 +137,7 @@ cmake --build build --config Release --target Foundry_VST3
 ## macOS / Linux
 
 ```bash
-git clone -b claude/foundry-vst-bugs-pll8g9 --single-branch https://github.com/iwolski99/VST3-Plugin-Template.git Foundry
+git clone https://github.com/iwolski99/VST3-Plugin-Template.git Foundry
 cd Foundry
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target Foundry_VST3 -j
@@ -66,8 +150,9 @@ sudo apt install libx11-dev libxext-dev libxrandr-dev libxinerama-dev \
                  libxcursor-dev libfreetype6-dev libfontconfig1-dev libasound2-dev
 ```
 
-A **Standalone** target (`Foundry_Standalone`) builds alongside the VST3 for
-auditioning without a DAW.
+A **Standalone** target (`Foundry_Standalone`) builds alongside the VST3. In
+the standalone app, type the tempo into the BPM box on the Riff Maker; inside
+a DAW the tempo always comes from the host.
 
 | OS | Installed VST3 path |
 |---|---|
@@ -77,33 +162,11 @@ auditioning without a DAW.
 
 ## First launch
 
-1. Open **Settings**.
-2. Choose a root library folder.
-3. Click **Create Recommended Structure** (or map your existing Kick / Clap / Hat / Ride / Bass folders).
-4. Drop WAV one-shots into those folders.
-5. **Refresh Library**.
-6. Generate drums or bass, then press **PLAY**, hit the host transport, or send
-   Foundry a note.
-
-Generated files are ordinary 24-bit WAV files on disk. Drag-and-drop from the
-library list works in hosts that accept external file drags (including FL Studio).
-
-## Playing loops
-
-Foundry plays one loop at a time - whichever is currently loaded.
-
-- **Clicking a row** in the Library browser loads that file and starts it.
-- **PLAY** restarts the loaded loop from the top; **STOP** ends it. Finishing a
-  generation batch arms its newest loop, so PLAY always has something to play.
-- **SYNC** (on by default) starts and stops with the host transport and folds
-  the loop into the timeline, so it stays locked to the bar wherever playback
-  begins.
-- **Any MIDI note** triggers the loop from the top and releasing it stops the
-  loop. The note is a trigger only: Foundry plays finished loops, so the pitch
-  you press never transposes the sample. Whichever key you hit in the piano
-  roll, the loop plays back exactly as rendered.
-
-The loaded loop and the SYNC setting are saved with the session.
+1. Open **Settings** and choose a root library folder.
+2. Click **Create Recommended Structure**, or map your existing Kick / Snare /
+   Clap / Hat / Ride / Bass folders. *My Riffs* defaults to `<root>/Riffs`.
+3. Put samples in those folders and press **RESCAN** in the browser.
+4. Open **Bass** (or any folder), drag samples into the slots, and press PLAY.
 
 ## Tests
 
@@ -112,16 +175,21 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release -DFOUNDRY_BUILD_TESTS=ON
 cmake --build build --config Release --target FoundryEngineTest FoundryPlaybackTest FoundryLifecycleTest
 ```
 
-- `FoundryEngineTest` - offline generation, database and rendering.
-- `FoundryPlaybackTest` - drives the processor the way a host does and checks
-  that audio actually comes out of every trigger path.
-- `FoundryLifecycleTest` - repeated construct / run / destroy cycles.
+- `FoundryEngineTest`: offline generation, database, and the Riff Maker
+  engine: grid timing, slice lengths, start offsets, ring-through and cut-off,
+  seamless loop renders, browser folders / search / favourites, thumbnails.
+- `FoundryPlaybackTest`: drives the processor the way a host does: preview,
+  MIDI, host transport (including starting mid-riff), sample-rate changes,
+  undo/redo, dice, render and reopen, session save/restore.
+- `FoundryLifecycleTest`: repeated construct / run / destroy cycles.
+- `FoundryScreenshot <dir>`: renders the editor to PNGs with a demo library,
+  for checking the layout (run under `xvfb-run` on a headless Linux box).
 
 Add `-DFOUNDRY_SANITIZE=ON` to build the tests with AddressSanitizer and UBSan.
 
 ## Format
 
 64-bit VST3 instrument (`Instrument|Sampler`), MIDI in, stereo out, no audio
-input. WAV sources and 24-bit WAV output. Host sample rate by default
-(44.1 / 48 kHz overrides in Settings). All rendering happens off the audio
-thread, and the loaded clip is re-decoded if the host changes sample rate.
+input. All rendering happens off the audio thread; the riff player never
+locks, allocates or frees memory while it plays, and slot samples are
+re-prepared if the host changes sample rate.

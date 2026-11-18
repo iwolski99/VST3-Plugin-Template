@@ -1,10 +1,12 @@
 /*  End-to-end playback test: drives FoundryAudioProcessor the way a host does
-    and checks that audio actually comes out.
+    and checks that audio actually comes out of every path a user can trigger:
 
-    This is the test that would have caught "the pattern shows up but pressing
-    play makes no sound": every path a user can trigger playback from - the
-    PLAY button, a MIDI note, the host transport - is rendered here and the
-    output buffer is checked for signal.
+      - clicking a sample in the browser (preview), STOP and PLAY again
+      - a MIDI note playing the riff (and its pitch not mattering)
+      - the host transport with SYNC on / off, including starting mid-riff
+      - a sample-rate change
+      - undo / redo, the dice, render-to-WAV and reopening a rendered riff
+      - session save / restore of the riff
 
     Build with -DFOUNDRY_BUILD_TESTS=ON, then run FoundryPlaybackTest. */
 
@@ -56,7 +58,7 @@ namespace
         return peak;
     }
 
-    /** Minimal host transport so the plugin's follow-transport path can run. */
+    /** Minimal host transport. */
     struct TestPlayHead : juce::AudioPlayHead
     {
         bool playing = false;
@@ -73,7 +75,7 @@ namespace
         }
     };
 
-    juce::File writeLoop (const juce::File& dir, double sr, double seconds)
+    juce::File writeTone (const juce::File& file, double sr, double seconds, double freq = 220.0)
     {
         foundry::AudioIO io;
         const int n = juce::roundToInt (sr * seconds);
@@ -81,16 +83,14 @@ namespace
 
         for (int i = 0; i < n; ++i)
         {
-            const auto s = (float) (0.5 * std::sin (juce::MathConstants<double>::twoPi
-                                                    * 220.0 * (double) i / sr));
+            const auto s = (float) (0.5 * std::sin (juce::MathConstants<double>::twoPi * freq * (double) i / sr));
             b.setSample (0, i, s);
             b.setSample (1, i, s);
         }
 
-        auto f = dir.getChildFile ("loop.wav");
         juce::String err;
-        expect (io.writeWav (f, b, sr, 24, err), "write test loop: " + err);
-        return f;
+        expect (io.writeWav (file, b, sr, 24, err), "write test tone: " + err);
+        return file;
     }
 }
 
@@ -104,11 +104,18 @@ int main()
 
     const double sr = 48000.0;
     const int blockSize = 512;
-    auto loopFile = writeLoop (dir, sr, 1.0);
-    auto alignFile = writeLoop (dir.getChildFile ("align"), sr, 1.0);
+    auto loopFile  = writeTone (dir.getChildFile ("loop.wav"), sr, 1.0);
+    auto toneA     = writeTone (dir.getChildFile ("toneA.wav"), sr, 1.0, 110.0);
+    auto toneB     = writeTone (dir.getChildFile ("toneB.wav"), sr, 1.0, 165.0);
 
     FoundryAudioProcessor proc;
     proc.prepareToPlay (sr, blockSize);
+
+    // Point the library somewhere disposable so renders don't touch real folders.
+    proc.getConfig().setRoot (dir);
+    juce::String err;
+    expect (proc.getConfig().createRecommendedStructure (err), "library structure: " + err);
+    expect (proc.reopenDatabase (err), "open database: " + err);
 
     // A generator: MIDI in, no audio in, audio out.
     expect (proc.acceptsMidi(), "accepts MIDI so the piano roll can trigger it");
@@ -117,41 +124,37 @@ int main()
 
     juce::AudioBuffer<float> buffer (2, blockSize);
     juce::MidiBuffer midi;
-    buffer.clear();
 
-    // Silence before anything is loaded, and no stale host buffer passed through.
     for (int ch = 0; ch < 2; ++ch)
         for (int i = 0; i < blockSize; ++i)
             buffer.setSample (ch, i, 0.9f);
     expect (renderPeak (proc, buffer, midi, 1) == 0.0f,
             "idle generator outputs silence, not the host's buffer contents");
 
-    // 1. Loading a clip starts it - this is what clicking a browser row does.
-    juce::String err;
-    expect (proc.previewFile (loopFile, true, err), "load loop: " + err);
-    expect (proc.getPreview().hasClip(), "clip is loaded");
-    expect (renderPeak (proc, buffer, midi, 8) > 0.05f, "audio after loading a loop");
-
-    // 2. STOP then PLAY - the reported bug. PLAY is gated on a decoded clip,
-    //    so it works whether or not the source file is still on disk.
-    proc.getPreview().stop();
-    renderPeak (proc, buffer, midi, 4);            // let the release ramp finish
-    expect (! proc.getPreview().isPlaying(), "stop halts playback");
-
-    proc.getPreview().retrigger();
-    expect (renderPeak (proc, buffer, midi, 8) > 0.05f, "PLAY restarts a loaded loop");
+    // 1. Preview: clicking a browser tile plays the sample; STOP / PLAY work,
+    //    even after the file is gone.
+    expect (proc.previewFile (loopFile, true, err), "preview loop: " + err);
+    expect (renderPeak (proc, buffer, midi, 8) > 0.05f, "audio after clicking a sample");
 
     proc.getPreview().stop();
     renderPeak (proc, buffer, midi, 4);
+    expect (! proc.getPreview().isPlaying(), "stop halts the preview");
+
     loopFile.deleteFile();
     proc.getPreview().retrigger();
-    expect (renderPeak (proc, buffer, midi, 8) > 0.05f,
-            "PLAY still works when the source file has been removed");
-
-    // 3. A MIDI note plays the loaded loop; the note chosen does not transpose it.
+    expect (renderPeak (proc, buffer, midi, 8) > 0.05f, "preview PLAY still works after the file is removed");
     proc.getPreview().stop();
-    renderPeak (proc, buffer, midi, 4);
+    renderPeak (proc, buffer, midi, 6);
 
+    // 2. Build a riff by dropping samples into slots.
+    expect (proc.assignSample (0, toneA, err), "drop sample into slot 1: " + err);
+    expect (proc.assignSample (2, toneB, err), "drop sample into slot 3: " + err);
+    expect (! proc.assignSample (1, dir.getChildFile ("nope.wav"), err), "dropping a missing file is refused");
+    expect (proc.getSketch().slots[0].path == toneA.getFullPathName(), "slot 1 holds the sample");
+    expect (proc.getSketch().slots[0].lengthSteps == 4, "a new slot lasts a quarter note by default");
+
+    // 3. A MIDI note plays the riff; which note doesn't matter.
+    proc.setFollowTransport (false);
     float peaks[2] = { 0.0f, 0.0f };
     const int notes[2] = { 36, 84 };
 
@@ -166,105 +169,145 @@ int main()
         renderPeak (proc, buffer, midi, 4);
     }
 
-    expect (peaks[0] > 0.05f, "MIDI note-on plays the loop");
-    expect (peaks[1] > 0.05f, "a note two octaves up plays the same loop");
-    expect (std::abs (peaks[0] - peaks[1]) < 0.02f,
-            "playback level is the same whichever note is pressed");
-    expect (! proc.getPreview().isPlaying(), "note-off stops the loop");
+    expect (peaks[0] > 0.05f, "MIDI note-on plays the riff");
+    expect (std::abs (peaks[0] - peaks[1]) < 0.02f, "playback is the same whichever note is pressed");
+    expect (renderPeak (proc, buffer, midi, 2) == 0.0f, "note-off stops the riff");
 
-    // 4. The host transport starts and stops playback when SYNC is on.
+    // 4. Host transport with SYNC on.
     TestPlayHead playHead;
     proc.setPlayHead (&playHead);
     proc.setFollowTransport (true);
 
     playHead.playing = true;
     playHead.ppq = 0.0;
-    expect (renderPeak (proc, buffer, midi, 8) > 0.05f, "host transport starts the loop");
+    expect (renderPeak (proc, buffer, midi, 4) > 0.05f, "host transport plays the riff");
 
+    // Starting in the middle of slot 3 (beat 3) picks it up immediately.
     playHead.playing = false;
-    renderPeak (proc, buffer, midi, 8);
-    expect (! proc.getPreview().isPlaying(), "host transport stop halts the loop");
-
-    // Starting mid-timeline folds into the loop rather than restarting it.
-    // Arm a clip first, so a freshly loaded loop's pending restart cannot
-    // rewind the alignment to zero.
-    expect (proc.getPreview().load (alignFile, true, err), "arm loop for alignment: " + err);
-    expect (! proc.getPreview().isPlaying(), "load() arms without starting");
-
+    renderPeak (proc, buffer, midi, 4);
     playHead.playing = true;
-    playHead.ppq = 12.0;                            // three bars in at 4/4
+    playHead.ppq = 2.4;
     proc.processBlock (buffer, midi);
+    expect (magnitudeOf (buffer) > 0.05f, "starting the host mid-slot plays that slot straight away");
+    expect (proc.getRiff().getCurrentSlot() == 2, "the riff reports slot 3 as current");
 
-    {
-        const auto len = proc.getPreview().clipLengthSamples();
-        const auto elapsed = (juce::int64) (playHead.ppq * (60.0 / playHead.bpm) * sr);
-        const auto expected = (int) (elapsed % (juce::int64) len);
-
-        // One block has been rendered since the alignment.
-        const auto actual = proc.getPreview().positionSamples() - blockSize;
-        expect (std::abs (actual - expected) < 64,
-                "transport start mid-song folds into the loop (position " + juce::String (actual)
-                    + ", expected about " + juce::String (expected) + ")");
-    }
-
-    expect (renderPeak (proc, buffer, midi, 4) > 0.05f, "transport start mid-song plays");
+    // Beat 2 is empty and slot 1 is only a quarter long: silence there.
+    playHead.ppq = 1.1;
+    renderPeak (proc, buffer, midi, 1);           // the jump fades out what was playing
+    playHead.ppq = 1.3;
+    expect (renderPeak (proc, buffer, midi, 1) == 0.0f, "an empty slot is a rest");
 
     playHead.playing = false;
-    renderPeak (proc, buffer, midi, 8);
+    renderPeak (proc, buffer, midi, 2);
+    expect (renderPeak (proc, buffer, midi, 2) == 0.0f, "host stop silences the riff");
 
-    // With SYNC off the transport is ignored.
     proc.setFollowTransport (false);
     playHead.playing = true;
     playHead.ppq = 0.0;
     expect (renderPeak (proc, buffer, midi, 8) == 0.0f, "SYNC off ignores the transport");
+    playHead.playing = false;
+
+    // 5. Tempo comes from the host.
+    expect (std::abs (proc.getRiffBpm() - playHead.bpm) < 0.01, "riff tempo follows the host");
 
     proc.setPlayHead (nullptr);
 
-    // 5. A sample-rate change re-decodes the clip, so the loop keeps its
-    //    original speed and pitch instead of playing back transposed.
-    auto rateFile = writeLoop (dir.getChildFile ("rate"), sr, 1.0);
-    expect (proc.previewFile (rateFile, true, err), "load loop for rate change: " + err);
-
-    const int lengthAt48k = proc.getPreview().clipLengthSamples();
-    expect (lengthAt48k > 0, "clip length known at 48 kHz");
-
+    // 6. A sample-rate change rebuilds the riff at the new rate.
     proc.prepareToPlay (96000.0, blockSize);
-    const int lengthAt96k = proc.getPreview().clipLengthSamples();
-    expect (std::abs (lengthAt96k - lengthAt48k * 2) < 64,
-            "clip is re-decoded at the new rate (got " + juce::String (lengthAt96k)
-                + ", expected about " + juce::String (lengthAt48k * 2) + ")");
-
+    proc.getRiff().startInternal();
+    expect (renderPeak (proc, buffer, midi, 8) > 0.05f, "riff plays after a sample-rate change");
+    proc.getRiff().stopAll();
     proc.prepareToPlay (sr, blockSize);
-    expect (std::abs (proc.getPreview().clipLengthSamples() - lengthAt48k) < 64,
-            "clip returns to its original length when the rate goes back");
 
-    proc.getPreview().retrigger();
-    expect (renderPeak (proc, buffer, midi, 8) > 0.05f, "still plays after rate changes");
+    // 7. Undo / redo.
+    {
+        const auto before = proc.getSketch();
+        auto next = before;
+        next.slots[0].lengthSteps = 2;
+        proc.setSketch (next, true);
+        expect (proc.canUndo(), "an edit can be undone");
+        expect (proc.undo() && proc.getSketch() == before, "undo restores the riff");
+        expect (proc.redo() && proc.getSketch().slots[0].lengthSteps == 2, "redo re-applies the edit");
+    }
 
-    // 6. Session state carries the armed loop and the SYNC setting.
+    // 8. The dice fills unlocked slots and leaves locked ones alone.
+    {
+        auto next = proc.getSketch();
+        next.slots[0].locked = true;
+        proc.setSketch (next, true);
+
+        std::vector<foundry::LibraryItem> pool;
+        for (auto f : { toneB })
+        {
+            foundry::LibraryItem it;
+            it.path = f.getFullPathName();
+            pool.push_back (it);
+        }
+
+        juce::String msg;
+        expect (proc.rollDice (pool, msg), "dice rolls: " + msg);
+        const auto& s = proc.getSketch();
+        expect (s.slots[0].path == toneA.getFullPathName(), "a locked slot keeps its sample");
+        bool allFilled = true;
+        for (int i = 1; i < foundry::kRiffSlots; ++i)
+            allFilled = allFilled && s.slots[(size_t) i].path == toneB.getFullPathName();
+        expect (allFilled, "every unlocked slot gets a sample from the pool");
+        expect (proc.undo() && proc.getSketch().slots[1].isEmpty(), "a dice roll can be undone");
+    }
+
+    // 9. Render to WAV, reuse when unchanged, reopen for editing.
+    {
+        bool reused = false;
+        auto file = proc.renderRiff (err, reused);
+        expect (file.existsAsFile(), "render writes a WAV: " + err);
+        expect (! reused, "first render is new");
+        expect (file.getParentDirectory() == proc.getConfig().riffDir(), "renders land in My Riffs");
+        expect (foundry::riffSidecarFor (file).existsAsFile(), "an editable riff file is saved next to it");
+        expect (proc.getLibrary().findByPath (file.getFullPathName()).has_value(), "the render is indexed straight away");
+
+        auto again = proc.renderRiff (err, reused);
+        expect (reused && again == file, "rendering an unchanged riff reuses the file");
+
+        foundry::AudioIO io;
+        juce::AudioBuffer<float> rendered;
+        double renderedSr = 0.0;
+        expect (io.loadWav (file, rendered, renderedSr, err), "rendered WAV decodes");
+        const double expectedLen = proc.getSketch().lengthBeats() * 60.0 / proc.getRiffBpm() * renderedSr;
+        expect (std::abs (rendered.getNumSamples() - expectedLen) < 4.0, "rendered riff is exactly the riff's length");
+        expect (rendered.getMagnitude (0, 0, rendered.getNumSamples()) > 0.05f, "rendered riff has audio");
+
+        const auto saved = proc.getSketch();
+        auto cleared = saved;
+        for (auto& s : cleared.slots)
+            s.path.clear();
+        proc.setSketch (cleared, true);
+        expect (proc.openRiff (file, err), "reopen a rendered riff: " + err);
+        expect (proc.getSketch() == saved, "reopening brings back the exact riff");
+        expect (FoundryAudioProcessor::isEditableRiff (file), "rendered riffs are editable");
+    }
+
+    // 10. The session carries the riff and the SYNC setting.
     proc.setFollowTransport (false);
-    juce::MemoryBlock saved;
-    proc.getStateInformation (saved);
+    juce::MemoryBlock state;
+    proc.getStateInformation (state);
 
     {
         FoundryAudioProcessor restored;
         restored.prepareToPlay (sr, blockSize);
-        restored.setStateInformation (saved.getData(), (int) saved.getSize());
+        restored.setStateInformation (state.getData(), (int) state.getSize());
 
         expect (! restored.getFollowTransport(), "SYNC setting survives a session reload");
-        expect (restored.getPreview().hasClip(), "the armed loop survives a session reload");
-        expect (! restored.getPreview().isPlaying(), "a restored session does not start playing on its own");
+        expect (restored.getSketch() == proc.getSketch(), "the riff survives a session reload");
+        expect (! restored.getRiff().isRunning(), "a restored session does not start playing on its own");
 
         juce::AudioBuffer<float> b2 (2, blockSize);
         juce::MidiBuffer m2;
-        b2.clear();
-        restored.getPreview().retrigger();
-        expect (renderPeak (restored, b2, m2, 8) > 0.05f, "PLAY works right after a session reload");
+        m2.addEvent (juce::MidiMessage::noteOn (1, 60, 1.0f), 0);
+        expect (renderPeak (restored, b2, m2, 8) > 0.05f, "the restored riff plays");
         restored.releaseResources();
     }
 
     proc.releaseResources();
-
     dir.deleteRecursively();
 
     if (gFails > 0)

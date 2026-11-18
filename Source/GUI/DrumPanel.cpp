@@ -104,7 +104,7 @@ DrumPanel::DrumPanel (FoundryAudioProcessor& p)
         banner.setMessage ("Saved " + name, false, false);
     };
 
-    loadPatternBox.addItem ("Load saved…", 1);
+    loadPatternBox.addItem ("Load saved...", 1);
     for (int i = 0; i < processor.getConfig().get().customPatternNames.size(); ++i)
         loadPatternBox.addItem (processor.getConfig().get().customPatternNames[i], i + 2);
     loadPatternBox.setSelectedId (1, juce::dontSendNotification);
@@ -184,6 +184,7 @@ void DrumPanel::applyLock (const foundry::LibraryItem& item)
         case foundry::Category::BassLoopsBase:
         case foundry::Category::BassLoopsSpliced:
         case foundry::Category::OneShotBass:
+        case foundry::Category::Riff:
         case foundry::Category::Unknown:
             break;
     }

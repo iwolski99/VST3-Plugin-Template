@@ -125,7 +125,7 @@ void BassPanel::paint (juce::Graphics& g)
 
     g.setFont (FoundryLookAndFeel::labelFont (13.0f, false));
     g.setColour (theme.textDim);
-    g.drawFittedText ("Sequences 2–4 of your bass one-shots into rhythmic phrases. "
+    g.drawFittedText ("Sequences 2-4 of your bass one-shots into rhythmic phrases. "
                       "Riddim stays mostly straight; Dubstep adds syncopation and triplet bursts. "
                       "Favourite the ones that work, then send them to the Riff Splicer.",
                       copy.removeFromTop (90), juce::Justification::topLeft, 5);

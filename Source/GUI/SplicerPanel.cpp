@@ -183,7 +183,7 @@ void SplicerPanel::paint (juce::Graphics& g)
 
     g.setFont (FoundryLookAndFeel::labelFont (8.5f, true, 0.14f));
     g.setColour (theme.textDim);
-    g.drawText ("BASS LOOPS  —  click to select 2–4 sources", 22, 14, 420, 12, juce::Justification::centredLeft);
+    g.drawText ("BASS LOOPS  -  click to select 2-4 sources", 22, 14, 420, 12, juce::Justification::centredLeft);
 
     juce::String sel = "SELECTED  " + juce::String (selectedPaths.size()) + " / 4";
     for (int i = 0; i < selectedPaths.size(); ++i)

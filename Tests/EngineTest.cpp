@@ -10,6 +10,9 @@
 #include "../Source/Core/LibraryDatabase.h"
 #include "../Source/Core/LibraryScan.h"
 #include "../Source/Core/PreviewEngine.h"
+#include "../Source/Core/BrowserModel.h"
+#include "../Source/Core/RiffEngine.h"
+#include "../Source/Core/ThumbnailCache.h"
 #include <atomic>
 #include <iostream>
 
@@ -48,6 +51,27 @@ namespace
         auto buf = makeClick (sr, freq, 0.18);
         juce::String err;
         return io.writeWav (file, buf, sr, 24, err);
+    }
+
+    /** Writes a test signal: dc != 0 gives a constant level, otherwise a ramp
+        0..1 over the file (so a value read back reveals where in the file it
+        came from). */
+    juce::File writeSignal (foundry::AudioIO& io, const juce::File& file, double sr, double seconds, float dc)
+    {
+        const int n = juce::roundToInt (sr * seconds);
+        juce::AudioBuffer<float> b (1, n);
+        for (int i = 0; i < n; ++i)
+            b.setSample (0, i, dc != 0.0f ? dc : (float) i / (float) n);
+        juce::String err;
+        io.writeWav (file, b, sr, 24, err);
+        return file;
+    }
+
+    float rms (const juce::AudioBuffer<float>& b, int start, int len)
+    {
+        start = juce::jlimit (0, b.getNumSamples(), start);
+        len = juce::jlimit (0, b.getNumSamples() - start, len);
+        return len > 0 ? b.getRMSLevel (0, start, len) : 0.0f;
     }
 
     bool isFiniteBuffer (const juce::AudioBuffer<float>& b)
@@ -222,6 +246,218 @@ int main()
     foundry::ConfigStore loaded;
     expect (loaded.load (cfgFile, err), "load config");
     expect (loaded.root() == root, "config root");
+
+    // ======================================================================
+    // Riff Maker
+    // ======================================================================
+    {
+        constexpr double sr = 48000.0;
+        constexpr double bpm = 120.0;            // a 16th = 0.125 s = 6000 samples
+        constexpr int step = 6000;
+
+        auto sigDir = root.getChildFile ("Signals");
+        sigDir.createDirectory();
+        const auto ramp  = writeSignal (io, sigDir.getChildFile ("ramp.wav"), sr, 4.0, 0.0f);
+        const auto plus  = writeSignal (io, sigDir.getChildFile ("plus.wav"), sr, 4.0, 0.5f);
+        const auto minus = writeSignal (io, sigDir.getChildFile ("minus.wav"), sr, 4.0, -0.25f);
+
+        foundry::SampleCache cache;
+
+        // JSON round trip
+        {
+            foundry::RiffSketch a;
+            a.gridSteps = 2;
+            a.slots[0].path = ramp.getFullPathName();
+            a.slots[0].offsetSeconds = 0.125;
+            a.slots[0].lengthSteps = 3;
+            a.slots[0].gain = 0.5f;
+            a.slots[3].locked = true;
+            a.lastSeed = 1234567890123LL;
+
+            foundry::RiffSketch b;
+            expect (foundry::RiffSketch::fromJson (a.toJson(), b), "riff JSON parses");
+            expect (a == b, "riff JSON round-trips every slot field");
+            expect (b.lastSeed == a.lastSeed, "riff JSON keeps the dice seed");
+            expect (! foundry::RiffSketch::fromJson ("{\"foo\":1}", b), "non-riff JSON is rejected");
+            expect (foundry::stepsName (4) == "1/4" && foundry::stepsName (3) == "3/16" && foundry::stepsName (16) == "1 bar",
+                    "length names");
+        }
+
+        // Grid timing and slice length: eight 1/8 slices on a 1/4 grid.
+        {
+            foundry::RiffSketch sk;
+            for (auto& sl : sk.slots)
+            {
+                sl.path = plus.getFullPathName();
+                sl.lengthSteps = 2;
+            }
+
+            auto out = foundry::RiffEngine::renderOffline (sk, cache, bpm, sr, 1);
+            expect (out.getNumSamples() == 8 * 4 * step, "one pass of a 2-bar riff is 2 bars long");
+            expect (isFiniteBuffer (out), "riff render is finite");
+
+            bool timingOk = true;
+            for (int k = 0; k < 8; ++k)
+            {
+                const int start = k * 4 * step;
+                const float on  = rms (out, start + 400, 2 * step - 800);       // inside the slice
+                const float off = rms (out, start + 2 * step + 300, 2 * step - 600);  // the gap after it
+                if (on < 0.4f || off > 0.001f)
+                    timingOk = false;
+            }
+            expect (timingOk, "each slot sounds on its grid position for exactly its length");
+        }
+
+        // Start offset (slip-edit): the slot plays from that point of the file.
+        {
+            foundry::RiffSketch sk;
+            sk.slots[0].path = ramp.getFullPathName();
+            sk.slots[0].offsetSeconds = 1.0;              // ramp value 0.25 at 1 s of 4 s
+
+            auto out = foundry::RiffEngine::renderOffline (sk, cache, bpm, sr, 1);
+            const float v = out.getSample (0, 1000);     // past the start fade
+            const float expected = (float) (sr * 1.0 + 1000) / (float) (sr * 4.0);
+            expect (std::abs (v - expected) < 0.01f,
+                    "slot starts at its offset in the sample (got " + juce::String (v, 4)
+                        + ", expected " + juce::String (expected, 4) + ")");
+        }
+
+        // A long slice rings on through a rest, but is cut by the next sample.
+        {
+            foundry::RiffSketch sk;
+            sk.slots[0].path = plus.getFullPathName();
+            sk.slots[0].lengthSteps = 8;                  // half a bar on a 1/4 grid
+            sk.slots[2].path = plus.getFullPathName();
+            sk.slots[2].lengthSteps = 8;
+            sk.slots[3].path = minus.getFullPathName();   // starts while slot 2 would still ring
+
+            auto out = foundry::RiffEngine::renderOffline (sk, cache, bpm, sr, 1);
+            expect (rms (out, 4 * step + 500, 3 * step) > 0.4f, "slice rings on through an empty slot");
+            const float afterChoke = out.getSample (0, 12 * step + 1200);
+            expect (std::abs (afterChoke + 0.25f) < 0.01f,
+                    "the next sample cuts the previous one off (got " + juce::String (afterChoke, 4) + ")");
+        }
+
+        // A seamless loop folds the ring-out of the last slot into the start.
+        {
+            foundry::RiffSketch sk;
+            sk.slots[7].path = plus.getFullPathName();
+            sk.slots[7].lengthSteps = 8;                  // rings past the end of the riff
+
+            auto loop = foundry::RiffEngine::renderLoop (sk, cache, bpm, sr);
+            expect (loop.getNumSamples() == 8 * 4 * step, "loop render is exactly one riff long");
+            expect (rms (loop, 1000, 2 * step) > 0.4f, "the tail of the last slot wraps to the start of the loop");
+        }
+
+        // Missing files become rests and are reported.
+        {
+            foundry::RiffSketch sk;
+            sk.slots[0].path = sigDir.getChildFile ("gone.wav").getFullPathName();
+            juce::StringArray problems;
+            auto out = foundry::RiffEngine::renderOffline (sk, cache, bpm, sr, 1, &problems);
+            expect (problems.contains ("gone.wav"), "missing sample is reported");
+            expect (out.getMagnitude (0, 0, out.getNumSamples()) == 0.0f, "missing sample plays as a rest");
+        }
+
+        // Live engine locked to a host timeline, including a jump.
+        {
+            foundry::RiffSketch sk;
+            sk.slots[1].path = plus.getFullPathName();    // beat 2
+            foundry::RiffEngine engine;
+            engine.publish (foundry::buildRiffSnapshot (sk, cache, sr));
+            engine.prepare (sr);
+            engine.setVolume (1.0f);
+
+            foundry::RiffEngine::HostInfo host;
+            host.playing = true;
+            host.ppqValid = true;
+            host.bpm = bpm;
+
+            juce::AudioBuffer<float> blockBuf (2, 512);
+            auto runAt = [&] (double ppq)
+            {
+                host.ppq = ppq;
+                blockBuf.clear();
+                engine.process (blockBuf, host);
+                return blockBuf.getMagnitude (0, 0, 512);
+            };
+
+            expect (runAt (0.0) == 0.0f, "beat 1 is a rest");
+            expect (runAt (1.5) > 0.3f, "jumping into the middle of slot 2 picks it up straight away");
+            host.playing = false;
+            runAt (1.6);
+            runAt (1.6);
+            expect (runAt (1.6) == 0.0f, "stopping the host transport silences the riff");
+        }
+
+        // Browser: curated folders, real sub-folders, search, favourites.
+        {
+            auto kicks = config.folder (foundry::FolderRole::Kick);
+            kicks.getChildFile ("Hard").createDirectory();
+            expect (writeShot (io, kicks.getChildFile ("Hard").getChildFile ("Kick_Hard.wav"), 48000.0, 50.0), "write nested kick");
+            auto rescan = foundry::scanLibrary (config, db, nullptr, nullptr);
+            expect (rescan.ok, "rescan: " + rescan.error);
+
+            foundry::BrowserModel model (config, db);
+            bool truncated = false;
+
+            auto top = model.list (foundry::BrowserModel::root(), {}, truncated);
+            auto findEntry = [] (const std::vector<foundry::BrowserEntry>& v, const juce::String& name) -> const foundry::BrowserEntry*
+            {
+                for (auto& e : v) if (e.name == name) return &e;
+                return nullptr;
+            };
+
+            const auto* drumsEntry = findEntry (top, "Drums");
+            expect (drumsEntry != nullptr && drumsEntry->isFolder() && drumsEntry->count >= 7,
+                    "root shows a Drums folder counting every drum sample");
+            expect (findEntry (top, "Favourites") != nullptr && findEntry (top, "My Riffs") != nullptr
+                        && findEntry (top, "Bass") != nullptr && findEntry (top, "Generated") != nullptr,
+                    "root shows Favourites, Bass, My Riffs and Generated");
+
+            auto drumsList = model.list (drumsEntry->target, {}, truncated);
+            const auto* kicksEntry = findEntry (drumsList, "Kicks");
+            expect (kicksEntry != nullptr && kicksEntry->count == 3, "Drums > Kicks counts nested files too");
+
+            auto kicksList = model.list (kicksEntry->target, {}, truncated);
+            expect (! kicksList.empty() && kicksList.front().isFolder() && kicksList.front().name == "Hard",
+                    "a real sub-folder is listed first");
+            int files = 0;
+            for (auto& e : kicksList) if (! e.isFolder()) ++files;
+            expect (files == 2, "only files directly in the folder are listed beside it");
+
+            auto crumbs = model.pathTo (kicksList.front().target);
+            expect (crumbs.size() == 4 && crumbs[1].title == "Drums" && crumbs[2].title == "Kicks" && crumbs[3].title == "Hard",
+                    "breadcrumb: Library > Drums > Kicks > Hard");
+
+            auto hits = model.list (drumsEntry->target, "hard", truncated);
+            expect (hits.size() == 1 && hits[0].name == "Kick_Hard", "search inside a folder finds nested files");
+
+            auto pool = model.filesUnder (drumsEntry->target);
+            expect (pool.size() >= 7, "the dice can draw from everything under a folder");
+
+            expect (db.setFavorite (kicksList.back().item.id, true, err), "favourite a kick");
+            auto favs = model.list (top.front().target, {}, truncated);
+            expect (favs.size() == 1, "Favourites lists favourited samples");
+
+            // Thumbnails arrive from the background thread.
+            foundry::ThumbnailCache thumbs (db);
+            const auto path = kicksList.back().item.path;
+            thumbs.request (path);
+            for (int i = 0; i < 200 && thumbs.request (path) == nullptr; ++i)
+                juce::Thread::sleep (10);
+            auto t = thumbs.request (path);
+            expect (t != nullptr && ! t->failed && (int) t->peaks.size() == foundry::ThumbnailCache::kBins,
+                    "thumbnail computed in the background");
+            expect (t != nullptr && t->seconds > 0.1, "thumbnail knows the duration");
+
+            std::vector<juce::uint8> cached;
+            double secs = 0.0;
+            const juce::File pf (path);
+            expect (db.loadThumb (path, pf.getLastModificationTime().toMilliseconds(), pf.getSize(), cached, secs),
+                    "thumbnail persisted in the library database");
+        }
+    }
 
     root.deleteRecursively();
 

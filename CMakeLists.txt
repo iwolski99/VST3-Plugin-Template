@@ -102,6 +102,11 @@ set(FOUNDRY_SOURCES
     Source/Core/PreviewEngine.cpp
     Source/Core/Generators.cpp
     Source/Core/JobWorker.cpp
+    Source/Core/RiffTypes.cpp
+    Source/Core/SampleCache.cpp
+    Source/Core/RiffEngine.cpp
+    Source/Core/ThumbnailCache.cpp
+    Source/Core/BrowserModel.cpp
     Source/GUI/Theme.cpp
     Source/GUI/LookAndFeel.cpp
     Source/GUI/KnobComponent.cpp
@@ -110,7 +115,9 @@ set(FOUNDRY_SOURCES
     Source/GUI/TabBar.cpp
     Source/GUI/BrowserList.cpp
     Source/GUI/SequencerGrid.cpp
-    Source/GUI/LibraryPanel.cpp
+    Source/GUI/TileBrowser.cpp
+    Source/GUI/RiffMakerPanel.cpp
+    Source/GUI/GeneratorPanel.cpp
     Source/GUI/DrumPanel.cpp
     Source/GUI/BassPanel.cpp
     Source/GUI/SplicerPanel.cpp
@@ -172,7 +179,12 @@ if(FOUNDRY_BUILD_TESTS)
         Source/Core/AudioIO.cpp
         Source/Core/PreviewEngine.cpp
         Source/Core/Generators.cpp
-        Source/Core/JobWorker.cpp)
+        Source/Core/JobWorker.cpp
+        Source/Core/RiffTypes.cpp
+        Source/Core/SampleCache.cpp
+        Source/Core/RiffEngine.cpp
+        Source/Core/ThumbnailCache.cpp
+        Source/Core/BrowserModel.cpp)
 
     juce_add_console_app(FoundryEngineTest PRODUCT_NAME "FoundryEngineTest")
     target_sources(FoundryEngineTest PRIVATE Tests/EngineTest.cpp ${FOUNDRY_ENGINE_SOURCES})
@@ -224,6 +236,28 @@ if(FOUNDRY_BUILD_TESTS)
         JUCE_REPORT_APP_USAGE=0
         JUCE_MODAL_LOOPS_PERMITTED=1)
     target_link_libraries(FoundryLifecycleTest PRIVATE
+        FoundryAssets
+        foundry_sqlite
+        juce::juce_audio_utils
+        juce::juce_audio_formats
+        juce::juce_audio_processors
+        juce::juce_gui_basics
+        juce::juce_gui_extra
+        PUBLIC
+        juce::juce_recommended_config_flags)
+
+    # Renders the editor to PNGs for layout checks (run under Xvfb on Linux).
+    juce_add_console_app(FoundryScreenshot PRODUCT_NAME "FoundryScreenshot")
+    target_sources(FoundryScreenshot PRIVATE Tests/ScreenshotTool.cpp ${FOUNDRY_SOURCES})
+    target_include_directories(FoundryScreenshot PRIVATE Source)
+    target_compile_definitions(FoundryScreenshot PUBLIC
+        JUCE_WEB_BROWSER=0
+        JUCE_USE_CURL=0
+        JUCE_STANDALONE_APPLICATION=1
+        JUCE_DISPLAY_SPLASH_SCREEN=0
+        JUCE_REPORT_APP_USAGE=0
+        JUCE_MODAL_LOOPS_PERMITTED=1)
+    target_link_libraries(FoundryScreenshot PRIVATE
         FoundryAssets
         foundry_sqlite
         juce::juce_audio_utils

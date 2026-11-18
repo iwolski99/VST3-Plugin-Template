@@ -31,8 +31,8 @@ private:
     juce::TextButton refreshButton { "REFRESH LIBRARY" };
     juce::TextButton rebuildButton { "REBUILD DATABASE" };
     juce::TextButton openDbButton { "OPEN DATABASE FOLDER" };
-    juce::TextButton folderButtons[8];
-    juce::Label folderLabels[8];
+    juce::TextButton folderButtons[foundry::kNumFolderRoles];
+    juce::Label folderLabels[foundry::kNumFolderRoles];
     juce::Label rootLabel;
     juce::ComboBox rateBox, genreBox, protectBox;
     juce::TextEditor bpmBox;

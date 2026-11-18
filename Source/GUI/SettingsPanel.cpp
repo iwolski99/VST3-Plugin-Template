@@ -28,7 +28,7 @@ SettingsPanel::SettingsPanel (FoundryAudioProcessor& p)
     {
         persist();
         auto err = processor.startLibraryScan();
-        banner.setMessage (err.isEmpty() ? "Scanning…" : err, err.isNotEmpty(), false);
+        banner.setMessage (err.isEmpty() ? "Scanning..." : err, err.isNotEmpty(), false);
     };
     rebuildButton.onClick = [this]
     {
@@ -38,7 +38,7 @@ SettingsPanel::SettingsPanel (FoundryAudioProcessor& p)
         else
         {
             auto scanErr = processor.startLibraryScan();
-            banner.setMessage (scanErr.isEmpty() ? "Database cleared. Rescanning…" : scanErr,
+            banner.setMessage (scanErr.isEmpty() ? "Database cleared. Rescanning..." : scanErr,
                                scanErr.isNotEmpty(), false);
         }
     };
@@ -47,7 +47,7 @@ SettingsPanel::SettingsPanel (FoundryAudioProcessor& p)
         processor.getLibrary().file().getParentDirectory().revealToUser();
     };
 
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < foundry::kNumFolderRoles; ++i)
     {
         folderButtons[i].setButtonText ("MAP");
         folderButtons[i].onClick = [this, i] { pickFolder ((foundry::FolderRole) i); };
@@ -128,12 +128,14 @@ void SettingsPanel::refreshLabels()
                                                         : root.getFullPathName(),
                        juce::dontSendNotification);
 
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < foundry::kNumFolderRoles; ++i)
     {
         const auto role = (foundry::FolderRole) i;
         auto f = processor.getConfig().folder (role);
-        const auto path = f.getFullPathName();
-        folderLabels[i].setText (foundry::folderRoleName (role) + "  —  "
+        auto path = f.getFullPathName();
+        if (path.isEmpty() && role == foundry::FolderRole::Riffs)
+            path = processor.getConfig().riffDir().getFullPathName() + "  (default)";
+        folderLabels[i].setText (foundry::folderRoleName (role) + "  -  "
                                      + (path.isEmpty() ? juce::String ("not mapped") : path),
                                  juce::dontSendNotification);
     }
@@ -206,7 +208,7 @@ void SettingsPanel::resized()
     createButton.setBounds (b.removeFromTop (26).removeFromLeft (280));
     b.removeFromTop (12);
 
-    for (int i = 0; i < 8; ++i)
+    for (int i = 0; i < foundry::kNumFolderRoles; ++i)
     {
         row = b.removeFromTop (22);
         folderButtons[i].setBounds (row.removeFromRight (70));

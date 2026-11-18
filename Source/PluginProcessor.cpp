@@ -28,7 +28,9 @@ FoundryAudioProcessor::FoundryAudioProcessor()
     // from a constructor pushes a parameter change at a host that has not
     // finished instantiating us yet, which some hosts do not survive.
     preview.setVolume (juce::jlimit (0.0f, 1.0f, config.get().previewVolume));
-    followTransport.store (config.get().followTransport);
+    riff.setVolume (juce::jlimit (0.0f, 1.0f, config.get().previewVolume));
+    riff.setFollowHost (config.get().followTransport);
+    standaloneBpm.store (juce::jlimit (40.0, 300.0, config.get().customBpm));
 
     reopenDatabase (err);
 }
@@ -42,11 +44,11 @@ FoundryAudioProcessor::~FoundryAudioProcessor()
         config.get().previewVolume = params.previewVolume->load() * 0.01f;
 
     juce::String err;
-    persistConfig (err);
+    persistConfig (err, true);
     library.close();
 }
 
-bool FoundryAudioProcessor::persistConfig (juce::String& error)
+bool FoundryAudioProcessor::persistConfig (juce::String& error, bool preferencesOnly)
 {
     config.get().defaultGenre = uiGenre;
     config.get().defaultBars = uiBars;
@@ -56,7 +58,10 @@ bool FoundryAudioProcessor::persistConfig (juce::String& error)
     if (params.previewVolume != nullptr)
         config.get().previewVolume = juce::jlimit (0.0f, 1.0f, params.previewVolume->load() * 0.01f);
 
-    return config.save (foundry::defaultConfigFile(), error);
+    config.get().followTransport = riff.getFollowHost();
+
+    return preferencesOnly ? config.savePreferences (foundry::defaultConfigFile(), error)
+                           : config.save (foundry::defaultConfigFile(), error);
 }
 
 bool FoundryAudioProcessor::reopenDatabase (juce::String& error)
@@ -131,8 +136,284 @@ bool FoundryAudioProcessor::loadNewestGenerated (juce::String& error)
 
 void FoundryAudioProcessor::setFollowTransport (bool shouldFollow)
 {
-    followTransport.store (shouldFollow);
+    riff.setFollowHost (shouldFollow);
     config.get().followTransport = shouldFollow;
+}
+
+//==============================================================================
+// Riff Maker
+
+void FoundryAudioProcessor::rebuildRiff()
+{
+    foundry::RiffSketch copy;
+    {
+        const juce::ScopedLock sl (sketchLock);
+        copy = sketch;
+    }
+
+    juce::StringArray problems;
+    riff.publish (foundry::buildRiffSnapshot (copy, samples, currentSr.load(), &problems));
+
+    const juce::ScopedLock sl (sketchLock);
+    sketchProblems = problems;
+}
+
+juce::StringArray FoundryAudioProcessor::getSketchProblems() const
+{
+    const juce::ScopedLock sl (sketchLock);
+    return sketchProblems;
+}
+
+void FoundryAudioProcessor::setSketch (const foundry::RiffSketch& next, bool recordUndo)
+{
+    {
+        const juce::ScopedLock sl (sketchLock);
+        if (recordUndo && next != sketch)
+        {
+            undoStack.push_back (sketch);
+            if (undoStack.size() > 200)
+                undoStack.erase (undoStack.begin());
+            redoStack.clear();
+        }
+        sketch = next;
+    }
+
+    rebuildRiff();
+    sketchChanged.sendChangeMessage();
+}
+
+void FoundryAudioProcessor::recordUndoFrom (const foundry::RiffSketch& before)
+{
+    const juce::ScopedLock sl (sketchLock);
+    if (before == sketch)
+        return;
+    undoStack.push_back (before);
+    if (undoStack.size() > 200)
+        undoStack.erase (undoStack.begin());
+    redoStack.clear();
+}
+
+bool FoundryAudioProcessor::undo()
+{
+    foundry::RiffSketch target;
+    {
+        const juce::ScopedLock sl (sketchLock);
+        if (undoStack.empty())
+            return false;
+        redoStack.push_back (sketch);
+        target = undoStack.back();
+        undoStack.pop_back();
+    }
+    setSketch (target, false);
+    return true;
+}
+
+bool FoundryAudioProcessor::redo()
+{
+    foundry::RiffSketch target;
+    {
+        const juce::ScopedLock sl (sketchLock);
+        if (redoStack.empty())
+            return false;
+        undoStack.push_back (sketch);
+        target = redoStack.back();
+        redoStack.pop_back();
+    }
+    setSketch (target, false);
+    return true;
+}
+
+bool FoundryAudioProcessor::assignSample (int slot, const juce::File& file, juce::String& error)
+{
+    if (slot < 0 || slot >= foundry::kRiffSlots)
+        return false;
+
+    if (! foundry::isSupportedAudioFile (file))
+    {
+        error = "Foundry can load WAV, AIFF, FLAC or Ogg files: " + file.getFileName();
+        return false;
+    }
+
+    // Decode now so a broken file is reported on drop rather than playing silence.
+    if (samples.get (file, error) == nullptr)
+        return false;
+
+    auto next = getSketch();
+    auto& s = next.slots[(size_t) slot];
+    s.path = file.getFullPathName();
+    s.offsetSeconds = 0.0;
+    setSketch (next, true);
+    return true;
+}
+
+bool FoundryAudioProcessor::rollDice (const std::vector<foundry::LibraryItem>& pool, juce::String& message)
+{
+    std::vector<juce::String> paths;
+    for (const auto& it : pool)
+        if (it.existsOnDisk && foundry::isSupportedAudioFile (juce::File (it.path)))
+            paths.push_back (it.path);
+
+    if (paths.empty())
+    {
+        message = "Nothing to roll from here - open a folder with samples in the browser first.";
+        return false;
+    }
+
+    auto next = getSketch();
+    int unlocked = 0;
+    for (const auto& s : next.slots)
+        if (! s.locked)
+            ++unlocked;
+
+    if (unlocked == 0)
+    {
+        message = "Every slot is locked - unlock a slot to let the dice change it.";
+        return false;
+    }
+
+    static std::atomic<juce::int64> salt { 0 };
+    const auto seed = juce::Time::currentTimeMillis() ^ (++salt * (juce::int64) 0x9E3779B97F4A7C15LL);
+    juce::Random rng (seed);
+
+    for (auto& s : next.slots)
+    {
+        if (s.locked)
+            continue;
+
+        // A few tries in case the index points at files that have since gone.
+        for (int attempt = 0; attempt < 8; ++attempt)
+        {
+            const auto& candidate = paths[(size_t) rng.nextInt ((int) paths.size())];
+            if (juce::File (candidate).existsAsFile())
+            {
+                s.path = candidate;
+                s.offsetSeconds = 0.0;
+                break;
+            }
+        }
+    }
+
+    next.lastSeed = seed;
+    setSketch (next, true);
+    message = "Rolled " + juce::String (unlocked) + (unlocked == 1 ? " slot" : " slots")
+            + " from " + juce::String ((int) paths.size()) + " samples.";
+    return true;
+}
+
+double FoundryAudioProcessor::getRiffBpm() const noexcept
+{
+    const auto host = hostBpm.load();
+    return host > 20.0 && host < 1000.0 ? host : standaloneBpm.load();
+}
+
+void FoundryAudioProcessor::setStandaloneBpm (double bpm)
+{
+    standaloneBpm.store (juce::jlimit (40.0, 300.0, bpm));
+    config.get().customBpm = standaloneBpm.load();
+}
+
+bool FoundryAudioProcessor::isEditableRiff (const juce::File& file)
+{
+    return file.hasFileExtension (foundry::kRiffSidecarExtension)
+        || foundry::riffSidecarFor (file).existsAsFile();
+}
+
+void FoundryAudioProcessor::relinkMissingSamples (foundry::RiffSketch& s) const
+{
+    // Moving a sample folder shouldn't break every riff that used it: look
+    // the file up by name in the library index.
+    for (auto& slot : s.slots)
+    {
+        if (slot.isEmpty() || juce::File (slot.path).existsAsFile())
+            continue;
+        if (auto found = library.findByFilename (juce::File (slot.path).getFileName()))
+            if (juce::File (found->path).existsAsFile())
+                slot.path = found->path;
+    }
+}
+
+bool FoundryAudioProcessor::openRiff (const juce::File& file, juce::String& error)
+{
+    const auto sidecar = file.hasFileExtension (foundry::kRiffSidecarExtension)
+                             ? file : foundry::riffSidecarFor (file);
+    if (! sidecar.existsAsFile())
+    {
+        error = file.getFileName() + " has no saved riff to open (only riffs rendered by Foundry do).";
+        return false;
+    }
+
+    foundry::RiffSketch loaded;
+    if (! foundry::RiffSketch::fromJson (sidecar.loadFileAsString(), loaded))
+    {
+        error = "Could not read " + sidecar.getFileName();
+        return false;
+    }
+
+    relinkMissingSamples (loaded);
+    setSketch (loaded, true);
+    return true;
+}
+
+juce::File FoundryAudioProcessor::renderRiff (juce::String& error, bool& reused)
+{
+    reused = false;
+    const auto current = getSketch();
+
+    if (current.isEmpty())
+    {
+        error = "The riff is empty - drop samples into the slots first.";
+        return {};
+    }
+
+    const double bpm = getRiffBpm();
+    const double sr = config.resolveRenderSampleRate (currentSr.load());
+    const auto key = current.toJson() + "|" + juce::String (bpm, 3) + "|" + juce::String (sr, 0);
+
+    if (key == lastRenderKey && lastRenderFile.existsAsFile())
+    {
+        reused = true;
+        return lastRenderFile;
+    }
+
+    juce::StringArray problems;
+    auto audio = foundry::RiffEngine::renderLoop (current, samples, bpm, sr, &problems);
+    if (config.get().renderProtection)
+        foundry::AudioIO::protectPeaks (audio);
+
+    const auto dir = config.riffDir();
+    const int seq = library.isOpen() ? library.nextSequence ("Riff_") : 1;
+    const auto stem = "Riff_" + juce::String (seq).paddedLeft ('0', 4)
+                    + "_" + juce::String (juce::roundToInt (bpm)) + "BPM";
+    auto file = foundry::AudioIO::uniqueWavPath (dir, stem);
+
+    foundry::AudioIO io;
+    if (! io.writeWav (file, audio, sr, 24, error))
+        return {};
+
+    foundry::riffSidecarFor (file).replaceWithText (current.toJson());
+
+    foundry::LibraryItem it;
+    it.filename = file.getFileName();
+    it.path = file.getFullPathName();
+    it.fileType = "loop";
+    it.category = foundry::Category::Riff;
+    it.bpm = bpm;
+    it.bars = juce::jmax (1, juce::roundToInt (std::ceil (current.lengthBeats() / 4.0)));
+    it.dateCreated = juce::Time::currentTimeMillis();
+    it.dateIndexed = it.dateCreated;
+    it.generationType = "riff";
+    it.generationSeed = current.lastSeed;
+    it.patternId = "grid " + foundry::stepsName (current.gridSteps);
+    it.engine = "riffmaker";
+    juce::String dbErr;
+    library.upsert (it, dbErr);
+
+    if (! problems.isEmpty())
+        error = "Rendered, but these samples were missing and played as rests: " + problems.joinIntoString (", ");
+
+    lastRenderKey = key;
+    lastRenderFile = file;
+    return file;
 }
 
 juce::String FoundryAudioProcessor::startLibraryScan()
@@ -252,29 +533,38 @@ bool FoundryAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) 
 
 double FoundryAudioProcessor::getTailLengthSeconds() const
 {
-    return preview.clipLengthSeconds();
+    return juce::jmax (0.05, preview.clipLengthSeconds());
 }
 
 void FoundryAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    const bool rateChanged = std::abs (currentSr.load() - sampleRate) > 0.5;
     currentSr.store (sampleRate);
 
-    // Note and transport tracking do not survive a stop/start, otherwise a
-    // note-on the host never matched with a note-off leaves the voice stuck.
+    // Note tracking does not survive a stop/start, otherwise a note-on the
+    // host never matched with a note-off leaves the riff running.
     heldNotes = 0;
-    transportWasPlaying = false;
-    startedByTransport = false;
 
     preview.prepare (sampleRate, samplesPerBlock);
+    riff.prepare (sampleRate);
+
+    // Slot samples are resampled to the playback rate; a new rate needs a new
+    // snapshot or the riff would play back transposed.
+    if (rateChanged || ! riffPrepared)
+        rebuildRiff();
+    riffPrepared = true;
+
     smoothedPreviewGain.reset (sampleRate, 0.02);
     const float v = params.previewVolume != nullptr ? params.previewVolume->load() * 0.01f : 0.8f;
     smoothedPreviewGain.setCurrentAndTargetValue (v);
     preview.setVolume (v);
+    riff.setVolume (v);
 }
 
 void FoundryAudioProcessor::releaseResources()
 {
     preview.reset();
+    riff.stopAll();
 }
 
 void FoundryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -308,65 +598,49 @@ void FoundryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         }
     }
 
-    // Any note plays the loaded loop at its recorded pitch - Foundry plays
-    // finished loops, so the note chosen in the piano roll only says when to
-    // start, never how to transpose.
+    // A MIDI note plays the riff from the top for as long as it is held - the
+    // note only says when, never how to transpose. Handy for auditioning a
+    // riff against a beat straight from the piano roll.
     for (const auto meta : midi)
     {
         const auto m = meta.getMessage();
-
         if (m.isNoteOn())
         {
             ++heldNotes;
-            startedByTransport = false;
-            preview.retrigger();
+            riff.startInternal();
         }
         else if (m.isNoteOff())
         {
-            heldNotes = juce::jmax (0, heldNotes - 1);
-            if (heldNotes == 0 && ! startedByTransport)
-                preview.stop();
+            if (heldNotes > 0 && --heldNotes == 0)
+                riff.stopInternal();
         }
         else if (m.isAllNotesOff() || m.isAllSoundOff())
         {
+            if (heldNotes > 0)
+                riff.stopInternal();
             heldNotes = 0;
-            if (! startedByTransport)
-                preview.stop();
         }
     }
-
-    if (followTransport.load())
-    {
-        if (transportPlaying && ! transportWasPlaying)
-        {
-            if (havePpq)
-                preview.alignToHost (ppq, hostBpm.load());
-
-            if (heldNotes == 0 && preview.hasClip())
-            {
-                startedByTransport = true;
-                preview.play();
-            }
-        }
-        else if (! transportPlaying && transportWasPlaying && startedByTransport)
-        {
-            startedByTransport = false;
-            preview.stop();
-        }
-    }
-
-    transportWasPlaying = transportPlaying;
 
     if (params.previewVolume != nullptr)
     {
         const float v = params.previewVolume->load() * 0.01f;
         smoothedPreviewGain.setTargetValue (v);
-        preview.setVolume (smoothedPreviewGain.getNextValue());
+        const float g = smoothedPreviewGain.getNextValue();
+        preview.setVolume (g);
+        riff.setVolume (g);
         // Advance the rest of the block so the smoother stays in time even
-        // though the player applies a per-block gain (volume isn't sample-accurate).
+        // though the players take one gain per block.
         for (int i = 1; i < numSamples; ++i)
             smoothedPreviewGain.getNextValue();
     }
+
+    foundry::RiffEngine::HostInfo host;
+    host.playing  = transportPlaying;
+    host.ppqValid = havePpq;
+    host.ppq      = ppq;
+    host.bpm      = getRiffBpm();
+    riff.process (buffer, host);
 
     preview.render (buffer);
 }
@@ -382,9 +656,9 @@ void FoundryAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     state.setProperty ("renderStems", renderStems, nullptr);
     state.setProperty ("drumPattern", drumPattern.toJson(), nullptr);
     state.setProperty ("lastTab", config.get().lastTab, nullptr);
-    state.setProperty ("followTransport", followTransport.load(), nullptr);
-    state.setProperty ("loadedLoop", preview.currentFile().getFullPathName(), nullptr);
-    state.setProperty ("loadedLoopLoops", preview.currentIsLoop(), nullptr);
+    state.setProperty ("followTransport", riff.getFollowHost(), nullptr);
+    state.setProperty ("riffSketch", getSketch().toJson(), nullptr);
+    state.setProperty ("standaloneBpm", standaloneBpm.load(), nullptr);
 
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
@@ -403,25 +677,28 @@ void FoundryAudioProcessor::setStateInformation (const void* data, int sizeInByt
         uiQuantity = juce::jlimit (1, 50, (int) state.getProperty ("uiQuantity", uiQuantity));
         renderFull = (bool) state.getProperty ("renderFull", true);
         renderStems = (bool) state.getProperty ("renderStems", true);
-        config.get().lastTab = (int) state.getProperty ("lastTab", 0);
+        config.get().lastTab = (int) state.getProperty ("lastTab", 0) > 0 ? 1 : 0;
 
         const auto json = state.getProperty ("drumPattern").toString();
         if (json.isNotEmpty())
             drumPattern = foundry::DrumPattern::fromJson (json, uiBars);
 
-        setFollowTransport ((bool) state.getProperty ("followTransport", followTransport.load()));
+        setFollowTransport ((bool) state.getProperty ("followTransport", riff.getFollowHost()));
+        standaloneBpm.store (juce::jlimit (40.0, 300.0,
+                                           (double) state.getProperty ("standaloneBpm", standaloneBpm.load())));
 
-        // Re-arm the loop the session was saved with, stopped: reopening a
-        // project should leave PLAY ready rather than empty.
-        const auto loopPath = state.getProperty ("loadedLoop").toString();
-        if (loopPath.isNotEmpty())
+        // The riff is part of the session: reopening the project brings back
+        // exactly what was in the slots (relinking samples that moved).
+        foundry::RiffSketch restored;
+        if (foundry::RiffSketch::fromJson (state.getProperty ("riffSketch").toString(), restored))
         {
-            const juce::File f (loopPath);
-            if (f.existsAsFile())
+            relinkMissingSamples (restored);
             {
-                juce::String err;
-                preview.load (f, (bool) state.getProperty ("loadedLoopLoops", true), err);
+                const juce::ScopedLock sl (sketchLock);
+                undoStack.clear();
+                redoStack.clear();
             }
+            setSketch (restored, false);
         }
 
         // An editor may already be open on this instance.

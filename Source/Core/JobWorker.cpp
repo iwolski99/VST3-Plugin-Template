@@ -57,7 +57,7 @@ bool JobWorker::startScan (ConfigStore& c, LibraryDatabase& d)
         return false;
     config = &c;
     db = &d;
-    setText ("Refreshing library", "Scanning folders…");
+    setText ("Refreshing library", "Scanning folders...");
     return enqueue (Kind::Scan);
 }
 
@@ -69,7 +69,7 @@ bool JobWorker::startDrums (ConfigStore& c, LibraryDatabase& d, DrumRequest req)
     config = &c;
     db = &d;
     drumReq = std::move (req);
-    setText ("Generating drum loops", "Preparing…");
+    setText ("Generating drum loops", "Preparing...");
     return enqueue (Kind::Drums);
 }
 
@@ -83,7 +83,7 @@ bool JobWorker::startBass (ConfigStore& c, LibraryDatabase& d, BassRequest req,
     db = &d;
     bassReq = std::move (req);
     bassPool = shots;
-    setText ("Generating bass loops", "Preparing…");
+    setText ("Generating bass loops", "Preparing...");
     return enqueue (Kind::Bass);
 }
 
@@ -95,7 +95,7 @@ bool JobWorker::startSplice (ConfigStore& c, LibraryDatabase& d, SpliceRequest r
     config = &c;
     db = &d;
     spliceReq = std::move (req);
-    setText ("Generating riff variations", "Preparing…");
+    setText ("Generating riff variations", "Preparing...");
     return enqueue (Kind::Splice);
 }
 
