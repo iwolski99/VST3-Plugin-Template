@@ -124,6 +124,7 @@ int main (int argc, char** argv)
         s.offsetSeconds = (i == 4) ? 0.06 : 0.0;
     }
     sk.slots[0].locked = true;
+    sk.slots[6].path.clear();          // slot 6 (1/2) rings through 7; 3 is silent
     sk.slots[6].gain = 0.6f;
     proc->setSketch (sk, false);
 

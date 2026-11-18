@@ -146,6 +146,13 @@ int main()
     proc.getPreview().stop();
     renderPeak (proc, buffer, midi, 6);
 
+    // 2a. A new riff is all silence: every slot starts empty.
+    expect (proc.getSketch().isEmpty(), "a new riff has no samples in it");
+    proc.getRiff().startInternal();
+    expect (renderPeak (proc, buffer, midi, 8) == 0.0f, "an untouched riff plays silence");
+    proc.getRiff().stopAll();
+    renderPeak (proc, buffer, midi, 2);
+
     // 2. Build a riff by dropping samples into slots.
     expect (proc.assignSample (0, toneA, err), "drop sample into slot 1: " + err);
     expect (proc.assignSample (2, toneB, err), "drop sample into slot 3: " + err);
@@ -284,6 +291,34 @@ int main()
         expect (proc.openRiff (file, err), "reopen a rendered riff: " + err);
         expect (proc.getSketch() == saved, "reopening brings back the exact riff");
         expect (FoundryAudioProcessor::isEditableRiff (file), "rendered riffs are editable");
+    }
+
+    // 9b. Delete makes a slot silent again - even one a long slice rang through.
+    {
+        foundry::RiffSketch sk;
+        sk.slots[0].path = toneA.getFullPathName();
+        sk.slots[0].lengthSteps = 12;                 // rings on through slots 2 and 3
+        sk.slots[3].path = toneB.getFullPathName();
+        proc.setSketch (sk, true);
+
+        expect (proc.getSketch().heldBy (1) == 0 && proc.getSketch().heldBy (2) == 0,
+                "slots 2 and 3 are held by slot 1's long slice");
+        expect (proc.getSketch().heldBy (4) == -1, "an empty slot after a normal slice is silent");
+
+        proc.silenceSlot (2);
+        expect (proc.getSketch().slots[0].lengthSteps == 8, "silencing slot 3 trims slot 1 so it stops there");
+        expect (proc.getSketch().heldBy (2) == -1 && proc.getSketch().heldBy (1) == 0, "slot 3 is now silent, slot 2 still held");
+
+        proc.silenceSlot (3);
+        expect (proc.getSketch().slots[3].isEmpty(), "Delete empties a slot");
+        expect (proc.undo() && ! proc.getSketch().slots[3].isEmpty(), "making a slot silent can be undone");
+
+        // The silence is real: render one pass and check beat 3.
+        auto now = proc.getSketch();
+        auto out = foundry::RiffEngine::renderOffline (now, proc.getSamples(), 120.0, sr, 1);
+        const int beat = juce::roundToInt (sr * 0.5);
+        expect (out.getMagnitude (0, 2 * beat + 300, beat - 600) < 1.0e-4f, "the silenced beat is silent");
+        expect (out.getMagnitude (0, beat + 300, beat - 600) > 0.05f, "the held beat before it still sounds");
     }
 
     // 10. File management: only Foundry's own files can be deleted or moved.

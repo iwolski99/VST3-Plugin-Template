@@ -357,6 +357,13 @@ int main()
             expect (a == b, "riff JSON round-trips every slot field");
             expect (b.lastSeed == a.lastSeed, "riff JSON keeps the dice seed");
             expect (! foundry::RiffSketch::fromJson ("{\"foo\":1}", b), "non-riff JSON is rejected");
+
+            foundry::RiffSketch held;
+            held.slots[2].path = "x.wav";
+            held.slots[2].lengthSteps = 9;          // 1/4 grid: rings into slots 4 and 5
+            expect (held.heldBy (3) == 2 && held.heldBy (4) == 2 && held.heldBy (5) == -1,
+                    "a slice longer than the grid holds the empty slots it rings through");
+            expect (held.heldBy (1) == -1 && held.heldBy (2) == -1, "slots before it are silent; a full slot isn't 'held'");
             expect (foundry::stepsName (4) == "1/4" && foundry::stepsName (3) == "3/16" && foundry::stepsName (16) == "1 bar",
                     "length names");
         }

@@ -446,6 +446,25 @@ bool FoundryAudioProcessor::redo()
     return true;
 }
 
+void FoundryAudioProcessor::silenceSlot (int slot)
+{
+    if (slot < 0 || slot >= foundry::kRiffSlots)
+        return;
+
+    auto next = getSketch();
+
+    // Cut a long slice that would otherwise sustain through this slot.
+    if (const int holder = next.heldBy (slot); holder >= 0)
+        next.slots[(size_t) holder].lengthSteps = (slot - holder) * next.gridSteps;
+
+    auto& s = next.slots[(size_t) slot];
+    s.path.clear();
+    s.offsetSeconds = 0.0;
+    s.gain = 1.0f;
+
+    setSketch (next, true);
+}
+
 bool FoundryAudioProcessor::assignSample (int slot, const juce::File& file, juce::String& error)
 {
     if (slot < 0 || slot >= foundry::kRiffSlots)

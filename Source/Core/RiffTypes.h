@@ -44,6 +44,11 @@ struct RiffSketch
     double lengthBeats() const noexcept { return totalSteps() / 4.0; }
     bool   isEmpty() const noexcept;
 
+    /** An empty slot is silence - unless the last sample before it was made
+        longer than the grid and is still ringing into it. Returns that
+        slot's index, or -1 when `slot` is silent. */
+    int heldBy (int slot) const noexcept;
+
     juce::var toVar() const;
     static RiffSketch fromVar (const juce::var&);
 

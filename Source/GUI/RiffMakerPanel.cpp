@@ -114,6 +114,11 @@ public:
             g.setColour (t.accent.withAlpha (0.9f));
             g.drawRoundedRectangle (bounds.reduced (0.5f), ui::panelCorner, 2.0f);
         }
+        else if (owner.getSelectedSlot() == index)
+        {
+            g.setColour (t.text.withAlpha (0.55f));
+            g.drawRoundedRectangle (bounds.reduced (0.5f), ui::panelCorner, 1.5f);
+        }
 
         paintTopBar (g, s);
         paintFrame (g, s);
@@ -146,7 +151,9 @@ public:
         g.setFont (FoundryLookAndFeel::labelFont (12.0f, ! s.isEmpty(), 0.01f));
         const bool missing = ! s.isEmpty() && ! juce::File (s.path).existsAsFile();
         g.setColour (s.isEmpty() ? t.textDim : (missing ? t.accentAlt : t.text));
-        g.drawText (s.isEmpty() ? juce::String ("Empty") : s.displayName() + (missing ? "  (missing)" : ""),
+        const int holder = processor.getSketch().heldBy (index);
+        g.drawText (s.isEmpty() ? (holder >= 0 ? "Held from slot " + juce::String (holder + 1) : juce::String ("Silent"))
+                                : s.displayName() + (missing ? "  (missing)" : ""),
                     bar, juce::Justification::centredLeft, true);
 
         // lock
@@ -166,8 +173,8 @@ public:
                 g.drawRoundedRectangle (body, 2.0f, 1.4f);
         }
 
-        // clear
-        if (! s.isEmpty())
+        // clear (makes the slot silent)
+        if (! s.isEmpty() || processor.getSketch().heldBy (index) >= 0)
         {
             g.setColour (t.textDim.withAlpha (isMouseOver() ? 0.9f : 0.4f));
             auto r = clearRect.toFloat().withSizeKeepingCentre (8.0f, 8.0f);
@@ -190,9 +197,21 @@ public:
             p.addRoundedRectangle (f.reduced (4.0f), 5.0f);
             juce::PathStrokeType (1.0f).createDashedStroke (p, p, dashes, 2);
             g.fillPath (p);
+            const int holder = processor.getSketch().heldBy (index);
+            if (holder >= 0)
+            {
+                g.setColour (t.accent.withAlpha (0.10f));
+                g.fillRoundedRectangle (f.reduced (4.0f), 5.0f);
+                g.setColour (t.text.withAlpha (0.8f));
+                g.setFont (FoundryLookAndFeel::labelFont (11.5f, false));
+                g.drawFittedText ("Slot " + juce::String (holder + 1) + " rings on through here\nPress Delete to cut it to silence",
+                                  frame.reduced (8), juce::Justification::centred, 3);
+                return;
+            }
+
             g.setColour (t.textDim);
             g.setFont (FoundryLookAndFeel::labelFont (11.5f, false));
-            g.drawFittedText ("Drop a sample here", frame.reduced (8), juce::Justification::centred, 2);
+            g.drawFittedText ("Silence\nDrop a sample here", frame.reduced (8), juce::Justification::centred, 2);
             return;
         }
 
@@ -314,6 +333,7 @@ public:
         const auto p = e.getPosition();
         gesture = Gesture::None;
         before = processor.getSketch();
+        owner.selectSlot (index);
 
         if (e.mods.isPopupMenu())
         {
@@ -324,9 +344,9 @@ public:
         const auto& s = slot();
 
         if (lockRect.contains (p))      { edit ([] (foundry::RiffSlot& x) { x.locked = ! x.locked; }, true); return; }
-        if (clearRect.contains (p) && ! s.isEmpty())
+        if (clearRect.contains (p) && (! s.isEmpty() || processor.getSketch().heldBy (index) >= 0))
         {
-            edit ([] (foundry::RiffSlot& x) { x.path.clear(); x.offsetSeconds = 0.0; }, true);
+            processor.silenceSlot (index);
             return;
         }
         if (lenDownRect.contains (p))   { edit ([] (foundry::RiffSlot& x) { x.lengthSteps = nextLength (x.lengthSteps, -1); }, true); return; }
@@ -432,6 +452,8 @@ public:
             setMouseCursor (juce::MouseCursor::NormalCursor);
     }
 
+    bool self_heldBy() const { return processor.getSketch().heldBy (index) >= 0; }
+
     void showMenu()
     {
         const auto s = slot();
@@ -453,7 +475,7 @@ public:
 
         m.addSeparator();
         m.addItem (4, s.locked ? "Unlock" : "Lock (dice keeps it)");
-        m.addItem (5, "Clear", ! s.isEmpty());
+        m.addItem (5, "Make silent (Delete)", ! s.isEmpty() || self_heldBy());
         m.addItem (6, "Show file in Explorer / Finder", ! s.isEmpty() && juce::File (s.path).existsAsFile());
 
         juce::Component::SafePointer<SlotView> safe (this);
@@ -466,7 +488,7 @@ public:
             if (r == 2) self.edit ([] (foundry::RiffSlot& x) { x.offsetSeconds = 0.0; }, true);
             if (r == 3) self.edit ([] (foundry::RiffSlot& x) { x.gain = 1.0f; }, true);
             if (r == 4) self.edit ([] (foundry::RiffSlot& x) { x.locked = ! x.locked; }, true);
-            if (r == 5) self.edit ([] (foundry::RiffSlot& x) { x.path.clear(); x.offsetSeconds = 0.0; }, true);
+            if (r == 5) self.processor.silenceSlot (self.index);
             if (r == 6) juce::File (self.slot().path).revealToUser();
             if (r >= 100 && r < 200)
             {
@@ -657,7 +679,8 @@ RiffMakerPanel::RiffMakerPanel (FoundryAudioProcessor& p)
     diceButton.setTooltip ("Fill every unlocked slot with a random sample from the folder open in the browser");
     undoButton.setTooltip ("Undo (Ctrl/Cmd+Z)");
     redoButton.setTooltip ("Redo (Ctrl/Cmd+Shift+Z)");
-    clearButton.setTooltip ("Empty every unlocked slot");
+    clearButton.setTooltip ("Make every unlocked slot silent");
+    setWantsKeyboardFocus (true);
     renderButton.setTooltip ("Save the riff as a WAV in My Riffs (with an editable copy you can reopen later)");
 
     playButton.onClick = [this] { processor.getRiff().startInternal(); };
@@ -766,6 +789,41 @@ void RiffMakerPanel::syncFromProcessor()
 void RiffMakerPanel::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     syncFromProcessor();
+}
+
+void RiffMakerPanel::selectSlot (int slot)
+{
+    selectedSlot = juce::jlimit (-1, foundry::kRiffSlots - 1, slot);
+    grabKeyboardFocus();
+    for (auto& s : slots)
+        s->repaint();
+}
+
+bool RiffMakerPanel::keyPressed (const juce::KeyPress& key)
+{
+    if (selectedSlot < 0)
+        return false;
+
+    if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
+    {
+        processor.silenceSlot (selectedSlot);
+        return true;
+    }
+    if (key == juce::KeyPress::leftKey)  { selectSlot (juce::jmax (0, selectedSlot - 1)); return true; }
+    if (key == juce::KeyPress::rightKey) { selectSlot (juce::jmin (foundry::kRiffSlots - 1, selectedSlot + 1)); return true; }
+    if (key == juce::KeyPress::upKey)    { selectSlot (selectedSlot >= 4 ? selectedSlot - 4 : selectedSlot); return true; }
+    if (key == juce::KeyPress::downKey)  { selectSlot (selectedSlot < 4 ? selectedSlot + 4 : selectedSlot); return true; }
+    if (key == juce::KeyPress::returnKey)
+    {
+        processor.getRiff().auditionSlot (selectedSlot);
+        return true;
+    }
+    if (key == juce::KeyPress::escapeKey)
+    {
+        selectSlot (-1);
+        return true;
+    }
+    return false;
 }
 
 void RiffMakerPanel::setGrid (int steps)

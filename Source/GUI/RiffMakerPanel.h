@@ -33,6 +33,12 @@ public:
     void rollDice();
     void syncFromProcessor();
 
+    /** Click a slot to select it; Delete / Backspace then makes it silent,
+        left / right move the selection, Enter plays the selected slot. */
+    void selectSlot (int slot);
+    int  getSelectedSlot() const noexcept { return selectedSlot; }
+    bool keyPressed (const juce::KeyPress&) override;
+
     void paint (juce::Graphics&) override;
     void resized() override;
 
@@ -56,6 +62,7 @@ private:
     StatusBanner banner;
 
     int lastSlotShown = -2;
+    int selectedSlot = -1;
     bool lastHostTempo = false;
     double lastBpmShown = 0.0;
 

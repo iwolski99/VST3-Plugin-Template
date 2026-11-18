@@ -12,6 +12,20 @@ bool RiffSketch::isEmpty() const noexcept
     return true;
 }
 
+int RiffSketch::heldBy (int slot) const noexcept
+{
+    if (slot <= 0 || slot >= kRiffSlots || ! slots[(size_t) slot].isEmpty())
+        return -1;
+
+    for (int j = slot - 1; j >= 0; --j)
+    {
+        if (slots[(size_t) j].isEmpty())
+            continue;
+        return slots[(size_t) j].lengthSteps > (slot - j) * gridSteps ? j : -1;
+    }
+    return -1;
+}
+
 juce::var RiffSketch::toVar() const
 {
     auto root = juce::DynamicObject::Ptr (new juce::DynamicObject());

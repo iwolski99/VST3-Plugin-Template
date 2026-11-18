@@ -116,6 +116,11 @@ public:
     bool canUndo() const noexcept { return ! undoStack.empty(); }
     bool canRedo() const noexcept { return ! redoStack.empty(); }
 
+    /** Turns a slot into silence (the Delete key). If an earlier sample was
+        still ringing into it, that sample is shortened so the slot really is
+        silent. Its lock stays, so a locked silence survives the dice. */
+    void silenceSlot (int slot);
+
     /** Drops a sample into a slot (start offset resets; length, gain and lock stay). */
     bool assignSample (int slot, const juce::File& file, juce::String& error);
 

@@ -25,20 +25,28 @@ No cloud. No subscription. Your sounds in. Ideas out.
  └ preview · volume · zoom ────────────────────────────────────────────────────────────────┘
 ```
 
+- **Every slot starts silent.** An empty slot is a rest, so you can leave
+  gaps on purpose. **Click a slot and press Delete** (or Backspace, or its ×)
+  to turn it back into silence. Arrow keys move between slots and Enter
+  plays the selected one.
 - **Slots sit on a fixed grid.** Slot 1 starts on beat 1, slot 2 on beat 2, and
   so on: eight slots on the default 1/4 grid make a 2-bar riff. Switch the
   grid to 1/16, 1/8 or 1/2 for faster or slower riffs.
 - **Each slot plays only the first slice of its sample**, a quarter note by
   default. Change it with the ◂ ▸ arrows (1/16 up to 1 bar). A slice longer
-  than the grid is cut off when the next slot starts, so the riff behaves like
-  a bass line. If the next slot is empty, the slice rings on into it.
+  than the grid is cut off when the next sample starts, so the riff behaves
+  like a bass line. Making a slice longer is how you sustain a note: it rings
+  on through the empty slots after it, which are labelled *Held from slot N*.
+  Press Delete on a held slot and the long slice is trimmed so that slot is
+  silent again.
 - **Slide the start position** by dragging the waveform left or right, the way
   you slip-edit a clip in FL Studio's playlist: the slot stays on the grid and
   the audio moves underneath it. Hold Shift for fine moves; double-click the
   waveform to reset. The strip under the waveform shows where in the file the
   slot is playing from.
 - **Volume per slot**: drag the dB value up or down (double-click resets).
-- **Lock** a slot (padlock) and the dice and CLEAR leave it alone.
+- **Lock** a slot (padlock) and the dice and CLEAR leave it alone. That
+  includes silent slots: lock a rest to keep it silent when you roll.
 - **DICE** fills every unlocked slot with a random sample from whatever folder
   is open in the browser, or from your search results. Open *Drums › Kicks*
   and roll for kick riffs, or open *Bass* and roll for bass riffs.
