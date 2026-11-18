@@ -200,6 +200,7 @@ shows the first errors. Everything is saved in the `build-logs` folder:
 | `build-logs\errors.txt` | Just the error lines (send this if you need help) |
 | `build-logs\build-log.txt` | The full compile log |
 | `build-logs\configure-log.txt` | The setup / JUCE download log |
+| `build-logs\compiler-check-errors.txt` | Why Visual Studio's compiler check failed, when you see *No CMAKE_C_COMPILER could be found* |
 
 Options: `build_windows.bat clean` rebuilds from scratch, `noinstall` only
 builds, `nopause` doesn't wait for a key at the end.

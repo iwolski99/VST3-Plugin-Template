@@ -106,6 +106,23 @@ jobs:
           findstr /i /c:"RiffTypes.cpp" build-logs\errors.txt >nul || (echo errors.txt does not name the broken file & exit /b 1)
           echo Failure path OK.
 
+      # The "No CMAKE_C_COMPILER could be found" family: CMake's compiler
+      # check fails and the real reason is buried in CMake's own log. Force it
+      # with a toolset that doesn't exist and make sure the script digs the
+      # cause (MSB8020) out and explains it.
+      - name: Failure check - broken compiler setup is explained
+        shell: cmd
+        env:
+          FOUNDRY_TEST_TOOLSET: v999
+        run: |
+          call build_windows.bat nopause noinstall clean > compiler-failure-output.txt 2>&1
+          if not errorlevel 1 (type compiler-failure-output.txt & echo The script did not report the failure. & exit /b 1)
+          type compiler-failure-output.txt
+          findstr /c:"(during: configure)" compiler-failure-output.txt >nul || (echo Wrong stage & exit /b 1)
+          findstr /c:"build tools (the MSVC" compiler-failure-output.txt >nul || (echo Missing the toolset diagnosis & exit /b 1)
+          findstr /c:"MSB8020" build-logs\errors.txt >nul || (echo errors.txt is missing the hidden MSBuild error & exit /b 1)
+          echo Compiler-failure path OK.
+
       - name: Upload build logs (deliberate failure)
         if: always()
         uses: actions/upload-artifact@v4
@@ -114,3 +131,4 @@ jobs:
           path: |
             build-logs
             failure-output.txt
+            compiler-failure-output.txt

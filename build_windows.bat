@@ -73,6 +73,10 @@ if not exist "%VSWHERE%" (
 
 set "VSVER="
 for /f "usebackq delims=" %%V in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationVersion`) do set "VSVER=%%V"
+REM Where that install lives. With several Visual Studio installs (e.g. Build
+REM Tools + Community) CMake may otherwise pick one without the C++ compiler.
+set "VSPATH="
+for /f "usebackq delims=" %%P in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%P"
 if not defined VSVER (
     set "WHY=Visual Studio is installed, but without the C++ tools."
     set "FIX=Open the Visual Studio Installer, click Modify, tick 'Desktop development with C++' and install it."
@@ -90,11 +94,20 @@ if not defined GEN (
     goto :failed
 )
 echo   Visual Studio: %GEN%  ^(%VSVER%^)
+echo   Installed at:  %VSPATH%
 
 REM -------------------------------------------------- stale / clean build dir
 if "%DO_CLEAN%"=="1" (
     echo   Cleaning the build folder...
     if exist build rmdir /s /q build
+)
+
+REM A setup that failed last time (e.g. the compiler check) is not reused:
+REM CMake would keep the broken result. The downloaded JUCE is kept.
+if exist "build\CMakeCache.txt" if not exist "build\.foundry-configured" (
+    echo   The last setup did not finish - starting it fresh.
+    del /q "build\CMakeCache.txt" 2>nul
+    if exist "build\CMakeFiles" rmdir /s /q "build\CMakeFiles"
 )
 
 REM A build folder made by a different Visual Studio (or on another machine)
@@ -112,8 +125,12 @@ REM ------------------------------------------------------------- configure
 set "STAGE=configure"
 echo.
 echo [1/3] Configuring  ^(the first run downloads JUCE - this can take a few minutes^)
-cmake -B build -G "%GEN%" -A x64 > "%CONFIG_LOG%" 2>&1
+set "TOOLSET_ARG="
+if defined FOUNDRY_TEST_TOOLSET set "TOOLSET_ARG=-T %FOUNDRY_TEST_TOOLSET%"
+if exist "build\.foundry-configured" del /q "build\.foundry-configured"
+cmake -B build -G "%GEN%" -A x64 %TOOLSET_ARG% "-DCMAKE_GENERATOR_INSTANCE=%VSPATH%" > "%CONFIG_LOG%" 2>&1
 if errorlevel 1 goto :diagnose
+echo ok> "build\.foundry-configured"
 
 REM ----------------------------------------------------------------- build
 set "STAGE=build"
@@ -183,6 +200,16 @@ REM ===========================================================================
 REM  Failure analysis: look for known problems in the logs and say what to do.
 REM ===========================================================================
 :diagnose
+REM When CMake's compiler check fails, the real reason (an MSBuild error) is
+REM only in CMake's own log. Pull it out so it can be read and diagnosed.
+set "CHECK_LOG=%LOGDIR%\compiler-check-errors.txt"
+type nul > "%CHECK_LOG%"
+if "%STAGE%"=="configure" for %%F in ("build\CMakeFiles\CMakeConfigureLog.yaml" "build\CMakeFiles\CMakeError.log") do (
+    if exist "%%~F" (
+        findstr /i /c:"error MSB" /c:"error C" /c:"error LNK" /c:"fatal error" /c:"Access is denied" /c:"is not recognized" "%%~F" >> "%CHECK_LOG%" 2>nul
+        copy /y "%%~F" "%LOGDIR%\cmake-compiler-check-%%~nxF" >nul 2>nul
+    )
+)
 set "LOG=%CONFIG_LOG%"
 if "%STAGE%"=="build" set "LOG=%BUILD_LOG%"
 if not exist "%LOG%" set "LOG=%CONFIG_LOG%"
@@ -193,12 +220,22 @@ type nul > "%ERRORS%"
 for %%F in ("%CONFIG_LOG%" "%BUILD_LOG%") do (
     if exist "%%~F" findstr /i /r /c:"error [A-Z][A-Z]*[0-9][0-9]*:" /c:"fatal error" /c:"CMake Error" /c:"error:" "%%~F" >> "%ERRORS%" 2>nul
 )
+REM The compiler-check reason goes first: it is the line that explains the rest.
+for %%S in ("%CHECK_LOG%") do if %%~zS gtr 0 (
+    copy /y "%CHECK_LOG%" "%ERRORS%.tmp" >nul
+    type "%ERRORS%" >> "%ERRORS%.tmp"
+    move /y "%ERRORS%.tmp" "%ERRORS%" >nul
+)
 
 set "WHY=The %STAGE% step failed."
 set "FIX=See the errors below and the full log in %LOG%."
 
 call :match "Could not create named generator"       "Your CMake is too old for %GEN%."  "Update CMake from https://cmake.org/download/ and run the script again."
-call :match "No CMAKE_CXX_COMPILER could be found"     "Visual Studio's C++ compiler could not be found."  "Open the Visual Studio Installer, Modify, and tick 'Desktop development with C++'."
+call :match "MSB8020"   "Visual Studio's C++ build tools (the MSVC v14x toolset) are missing from the install CMake used."  "Visual Studio Installer > Modify > Individual components: tick 'MSVC v143 - VS 2022 C++ x64/x86 build tools (Latest)'. Then run 'build_windows.bat clean'."
+call :match "MSB8036"   "The Windows SDK that CMake picked is not installed (or only partly)."  "Visual Studio Installer > Modify > Individual components: tick the newest 'Windows 11 SDK' (or Repair Visual Studio). Then run 'build_windows.bat clean'."
+call :match "kernel32.lib" "The Windows SDK is incomplete - its libraries are missing."  "Visual Studio Installer > Modify > Individual components: re-tick the newest 'Windows 11 SDK' (or Repair). Then run 'build_windows.bat clean'."
+call :match "Access is denied" "Windows blocked the compiler (usually antivirus, or a protected / network / removable drive)."  "Clone into a plain folder on C: such as C:\dev\Foundry, or add the folder to your antivirus exclusions, then run 'build_windows.bat clean'."
+call :match "No CMAKE_CXX_COMPILER could be found"     "CMake could not run Visual Studio's C++ compiler (its test compile failed)."  "Read build-logs\compiler-check-errors.txt for the exact reason. If it is empty: Visual Studio Installer > Repair, make sure the newest 'Windows 11 SDK' is ticked, try a folder on C: (e.g. C:\dev\Foundry), then 'build_windows.bat clean'."
 call :match "could not find any instance of Visual Studio" "CMake could not find Visual Studio."  "Install Visual Studio 2022 with 'Desktop development with C++', then run again."
 call :match "Failed to clone repository"               "Downloading JUCE failed."  "Check your internet connection (or firewall / antivirus blocking git), then run again."
 call :match "Could not resolve host"                   "No internet connection while downloading JUCE."  "Connect to the internet and run the script again (only the first build needs it)."
@@ -248,7 +285,7 @@ REM The first match wins (later, more generic patterns don't overwrite it).
 REM ---------------------------------------------------------------------------
 :match
 if defined MATCHED exit /b 0
-findstr /i /c:%1 "%CONFIG_LOG%" "%BUILD_LOG%" >nul 2>nul
+findstr /i /c:%1 "%CONFIG_LOG%" "%BUILD_LOG%" "%LOGDIR%\compiler-check-errors.txt" >nul 2>nul
 if errorlevel 1 exit /b 0
 set "MATCHED=1"
 set "WHY=%~2"
